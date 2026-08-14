@@ -1,19 +1,18 @@
-import datetime
-import functools
-from time import sleep
 from datetime import datetime
-import requests
+from time import sleep
+import functools
+import json
+
 from rich.console import Console
 from rich.table import Table
-import json
+import requests
 
 
 API_URL = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&page=1"
 console = Console()
-table = Table(title="Crypto Coins")
 
 
-def retry(max_attempts, delay):
+def retry(max_attempts: int, delay: int):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -21,11 +20,9 @@ def retry(max_attempts, delay):
                 try:
                     result = func(*args, **kwargs)
                 except requests.exceptions.RequestException:
-                    print("Повторная попытка подключения...")
-                    sleep(delay)
+                    with console.status("[yellow] Повторная попытка подключения...[/]"):
+                        sleep(delay)
                 else:
-                    if not result:
-                        return {"detail": "not found"}
                     return result
             raise requests.exceptions.RequestException("Не удалось подключиться, возможно неверный URL")
         return wrapper
@@ -52,7 +49,10 @@ def capitalize_coins(coins: list[dict]) -> float:
     return sum((coin["market_cap"] for coin in coins))
 
 def show_table(growth: list[dict], fall: list[dict]):
+    table = Table(title="Crypto Coins")
+
     with console.status("[green] Загрузка...[/]"):
+        sleep(1)
         keys_coins = (
             'id', 'name', 'symbol', 'price_change_percentage_24h', 'total_volume'
         )
@@ -65,7 +65,7 @@ def show_table(growth: list[dict], fall: list[dict]):
 
         for f in fall:
             table.add_row(*(str(f.get(k)) for k in keys_coins), style="red")
-        sleep(2)
+
         console.print(table)
 
 def make_dict(coins: list[dict]):
@@ -83,7 +83,7 @@ def make_dict(coins: list[dict]):
     }
 
     keys = ["name", "symbol", "change_24h"]
-    keys_values = ["name", "symbol", "market_cap_change_percentage_24h"]
+    keys_values = ["name", "symbol", "price_change_percentage_24h"]
 
     for i in range(3):
         result_dict["top_gainers"].append({keys[j]: top_3[i][keys_values[j]] for j in range(3)})
@@ -99,19 +99,15 @@ def make_dict(coins: list[dict]):
 
 def write_to_file(coins: list[dict]):
     data = make_dict(coins)
-
     with open("crypto_report.json", "w") as file:
         json.dump(data, file, indent=4, ensure_ascii=False)
 
-def print_and_write_data(coins: list[dict]):
-    growth_coins = top_3_growth_coin_change(coins)
-    fall_coins = top_3_fall_coin_change(coins)
-    show_table(growth=growth_coins, fall=fall_coins)
-    write_to_file(coins)
-
 def main():
     top_coins = top_50_coin()
-    print_and_write_data(top_coins)
+    growth_coins = top_3_growth_coin_change(top_coins)
+    fall_coins = top_3_fall_coin_change(top_coins)
+    show_table(growth=growth_coins, fall=fall_coins)
+    write_to_file(top_coins)
 
 
 if __name__ == "__main__":
