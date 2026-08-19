@@ -7,6 +7,11 @@ from rich.console import Console
 from rich.table import Table
 import requests
 
+import os
+import dotenv
+
+dotenv.load_dotenv()
+
 
 API_URL = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&page=1"
 console = Console()
