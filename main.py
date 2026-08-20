@@ -47,7 +47,7 @@ class Coin:
     market_cap: float
 
     def __str__(self):
-        return f"class: {self.__class__.__name__} | name: {self.name} | id: {self.id}"
+        return f"class: {self.__class__.__name__} | name: {self.name} | id: {self.id} | price_change_24: {self.price_change_percentage_24h}"
 
     def __lt__(self, other):
         return self.price_change_percentage_24h < other.price_change_percentage_24h
@@ -80,7 +80,7 @@ class BaseProvider(ABC):
         pass
 
     @abstractmethod
-    def fetch_raw(self, params: dict) -> list[dict] | dict:
+    def fetch_raw(self, params: dict) -> list[dict]:
         pass
 
 
@@ -130,23 +130,29 @@ class ProviderCMC(BaseProvider):
         raw_data: list[dict] = self.fetch_raw(params)
         coins = [
             Coin(
-                item["id"],
-                item["name"],
-                item["symbol"],
-                item["quote"][0]["percent_change_24h"],
-                item["quote"][0]["volume_24h"],
-                item["quote"][0]["market_cap"],
+                id=item["id"],
+                name=item["name"],
+                symbol=item["symbol"],
+                price_change_percentage_24h=item["quote"][0]["percent_change_24h"],
+                total_volume=item["quote"][0]["volume_24h"],
+                market_cap=item["quote"][0]["market_cap"],
             )
             for item in raw_data
         ]
         return coins
 
 
-    def fetch_raw(self, params: dict) -> list[dict] | dict:
+    def fetch_raw(self, params: dict) -> list[dict]:
         response: dict = self.connector.get(url=self.url, params=params)
         return response["data"]
 
+class CoinCollection:
+    def __init__(self, coins: list[Coin]):
+        self.coins = coins
 
+    def top_gainers(self, qty_top=3):
+        sorted_coins = sorted(self.coins, reverse=True)
+        return sorted_coins[:qty_top]
 
 
 @retry(3, 2)
@@ -230,31 +236,28 @@ def write_to_file(coins: list[dict]):
 
 def main():
 
-    # conn_coingecko = Connector()
-    # provider_coingecko = ProviderCoingecko(conn_coingecko)
-    #
-    # with conn_coingecko:
-    #     coins_50 = provider_coingecko.get_coins()
-    #     for coin in coins_50:
-    #         print(coin)
+    conn_coingecko = Connector()
+    provider_coingecko = ProviderCoingecko(conn_coingecko)
+
+    with conn_coingecko:
+        coins_50_cg = provider_coingecko.get_coins()
+
+    collection_1 = CoinCollection(coins_50_cg)
+    top_gainers_cg = collection_1.top_gainers()
+
 
     headers = {"Accept": "application/json", "X-CMC_PRO_API_KEY": os.getenv("API_KEY")}
     conn_cmc = Connector(headers=headers)
     provider_cmc = ProviderCMC(conn_cmc)
     with conn_cmc:
-        coins_50 = provider_cmc.get_coins()
-        for coin in coins_50:
-            print(coin)
+        coins_50_cmc = provider_cmc.get_coins()
+
+    collection_2 = CoinCollection(coins_50_cmc)
+    top_gainers_cmc = collection_2.top_gainers()
 
 
-
-
-
-
-
-
-
-
+    console.print(top_gainers_cg)
+    console.print(top_gainers_cmc)
 
 
 
