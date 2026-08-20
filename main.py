@@ -3,6 +3,7 @@ from time import sleep
 import functools
 import json
 from dataclasses import dataclass
+from abc import ABC, abstractmethod
 
 from rich.console import Console
 from rich.table import Table
@@ -19,15 +20,16 @@ def retry(max_attempts: int, delay: int):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            for _ in range(max_attempts):
+            result = None
+            for i in range(1, max_attempts+1):
                 try:
                     result = func(*args, **kwargs)
-                except requests.exceptions.RequestException:
-                    with console.status("[yellow] Повторная попытка подключения...[/]"):
+                except requests.exceptions.RequestException as e:
+                    with console.status(f"[yellow] Retrying connection [{i}]...[/]"):
                         sleep(delay)
-                else:
-                    return result
-            raise requests.exceptions.RequestException("Не удалось подключиться, возможно неверный URL")
+                        if i == max_attempts:
+                            raise requests.exceptions.RequestException(f"Connection Failed: {e}")
+            return result
         return wrapper
     return decorator
 
@@ -69,21 +71,46 @@ class Connector:
         return response.json()
 
 
+class BaseProvider(ABC):
+    @abstractmethod
+    def get_coins(self, params: dict | None) -> list[Coin]:
+        pass
+
+    @abstractmethod
+    def fetch_raw(self, params: dict) -> list[dict]:
+        pass
 
 
+class ProviderCoingecko(BaseProvider):
+    def __init__(self, connector: Connector, host: str = "https://api.coingecko.com", path: str = "/api/v3/coins/markets/"):
+        self.host = host
+        self.path = path
+        self.url = self.host + self.path
+        self.connector = connector
 
 
+    def get_coins(self, params: dict | None = None) -> list[Coin]:
+        if params is None:
+            params = {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 50, "page": 1}
+
+        raw_data = self.fetch_raw(params)
+        coins = [
+            Coin(
+                item["id"],
+                item["name"],
+                item["symbol"],
+                item["price_change_percentage_24h"],
+                item["total_volume"],
+                item["market_cap"],
+            )
+            for item in raw_data
+        ]
+        return coins
 
 
-
-
-
-
-
-
-
-
-
+    def fetch_raw(self, params: dict) -> list[dict]:
+        response: list[dict] = self.connector.get(url=self.url, params=params)
+        return response
 
 
 
@@ -167,12 +194,26 @@ def write_to_file(coins: list[dict]):
     with open("crypto_report.json", "w") as file:
         json.dump(data, file, indent=4, ensure_ascii=False)
 
+
 def main():
-    top_coins = top_50_coin()
-    growth_coins = top_3_growth_coin_change(top_coins)
-    fall_coins = top_3_fall_coin_change(top_coins)
-    show_table(growth=growth_coins, fall=fall_coins)
-    write_to_file(top_coins)
+
+    conn_coingecko = Connector()
+    provider_coingecko = ProviderCoingecko(conn_coingecko)
+
+    with conn_coingecko:
+        coins_50 = provider_coingecko.get_coins()
+        for coin in coins_50:
+            print(coin)
+
+
+
+
+#     top_coins = top_50_coin()
+#     growth_coins = top_3_growth_coin_change(top_coins)
+#     fall_coins = top_3_fall_coin_change(top_coins)
+#     show_table(growth=growth_coins, fall=fall_coins)
+#     write_to_file(top_coins)
+
 
 
 if __name__ == "__main__":
