@@ -23,12 +23,15 @@ def retry(max_attempts: int, delay: int):
             result = None
             for i in range(1, max_attempts+1):
                 try:
-                    result = func(*args, **kwargs)
+                    result =  func(*args, **kwargs)
+                    break
                 except requests.exceptions.RequestException as e:
+                    if i == max_attempts:
+                        raise requests.exceptions.RequestException(f"Connection Failed: {e}")
+
                     with console.status(f"[yellow] Retrying connection [{i}]...[/]"):
                         sleep(delay)
-                        if i == max_attempts:
-                            raise requests.exceptions.RequestException(f"Connection Failed: {e}")
+
             return result
         return wrapper
     return decorator
@@ -63,11 +66,12 @@ class Connector:
         self.session.close()
 
     @retry(3, 2)
-    def get(self, url, params) -> list[dict]:
+    def get(self, url, params) -> list[dict] | dict:
         if self.session is None:
             raise RuntimeError("'Connector' должен использоваться как контекстный менеджер")
         response = self.session.get(url=url, params=params, headers=self.headers)
         response.raise_for_status()
+        console.print(response)
         return response.json()
 
 
@@ -77,7 +81,7 @@ class BaseProvider(ABC):
         pass
 
     @abstractmethod
-    def fetch_raw(self, params: dict) -> list[dict]:
+    def fetch_raw(self, params: dict) -> list[dict] | dict:
         pass
 
 
@@ -197,13 +201,30 @@ def write_to_file(coins: list[dict]):
 
 def main():
 
-    conn_coingecko = Connector()
-    provider_coingecko = ProviderCoingecko(conn_coingecko)
+    # conn_coingecko = Connector()
+    # provider_coingecko = ProviderCoingecko(conn_coingecko)
+    #
+    # with conn_coingecko:
+    #     coins_50 = provider_coingecko.get_coins()
+    #     for coin in coins_50:
+    #         print(coin)
 
-    with conn_coingecko:
-        coins_50 = provider_coingecko.get_coins()
+    headers = {"Accept": "application/json", "X-CMC_PRO_API_KEY": os.getenv("API_KEY")}
+    conn_cmc = Connector(headers=headers)
+    provider_cmc = ProviderCMC(conn_cmc)
+    with conn_cmc:
+        coins_50 = provider_cmc.get_coins()
         for coin in coins_50:
             print(coin)
+
+
+
+
+
+
+
+
+
 
 
 
