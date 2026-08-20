@@ -71,7 +71,6 @@ class Connector:
             raise RuntimeError("'Connector' должен использоваться как контекстный менеджер")
         response = self.session.get(url=url, params=params, headers=self.headers)
         response.raise_for_status()
-        console.print(response)
         return response.json()
 
 
@@ -116,6 +115,36 @@ class ProviderCoingecko(BaseProvider):
         response: list[dict] = self.connector.get(url=self.url, params=params)
         return response
 
+class ProviderCMC(BaseProvider):
+    def __init__(self, connector: Connector, host: str = "https://pro-api.coinmarketcap.com", path: str = "/v3/cryptocurrency/listings/latest"):
+        self.host = host
+        self.path = path
+        self.url = self.host + self.path
+        self.connector = connector
+
+
+    def get_coins(self, params: dict | None = None) -> list[Coin]:
+        if params is None:
+            params = {"sort": "market_cap", "sort_dir": "desc", "limit": "50"}
+
+        raw_data: list[dict] = self.fetch_raw(params)
+        coins = [
+            Coin(
+                item["id"],
+                item["name"],
+                item["symbol"],
+                item["quote"][0]["percent_change_24h"],
+                item["quote"][0]["volume_24h"],
+                item["quote"][0]["market_cap"],
+            )
+            for item in raw_data
+        ]
+        return coins
+
+
+    def fetch_raw(self, params: dict) -> list[dict] | dict:
+        response: dict = self.connector.get(url=self.url, params=params)
+        return response["data"]
 
 
 
