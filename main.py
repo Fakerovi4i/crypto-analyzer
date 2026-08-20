@@ -2,6 +2,7 @@ from datetime import datetime
 from time import sleep
 import functools
 import json
+from dataclasses import dataclass
 
 from rich.console import Console
 from rich.table import Table
@@ -12,10 +13,7 @@ import dotenv
 
 dotenv.load_dotenv()
 
-
-API_URL = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&page=1"
 console = Console()
-
 
 def retry(max_attempts: int, delay: int):
     def decorator(func):
@@ -33,10 +31,73 @@ def retry(max_attempts: int, delay: int):
         return wrapper
     return decorator
 
+
+@dataclass
+class Coin:
+    id: str
+    name: str
+    symbol: str
+    price_change_percentage_24h: float
+    total_volume: float
+    market_cap: float
+
+    def __str__(self):
+        return f"class: {self.__class__.__name__} | name: {self.name} | id: {self.id}"
+
+    def __lt__(self, other):
+        return self.price_change_percentage_24h < other.price_change_percentage_24h
+
+
+class Connector:
+    def __init__(self, headers: dict | None = None):
+        self.headers = headers
+        self.session: requests.Session | None = None
+
+    def __enter__(self):
+        self.session = requests.Session()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.session.close()
+
+    @retry(3, 2)
+    def get(self, url, params) -> list[dict]:
+        if self.session is None:
+            raise RuntimeError("'Connector' должен использоваться как контекстный менеджер")
+        response = self.session.get(url=url, params=params, headers=self.headers)
+        response.raise_for_status()
+        return response.json()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 @retry(3, 2)
 def top_50_coin() -> list[dict]:
-    response = requests.get(API_URL)
-    response.raise_for_status()
+    url = os.getenv("API_1_URL") + "/api/v3/coins/markets"
+    params = {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 50, "page": 1}
+
+    with requests.Session() as session:
+        response = session.get(url=url, params=params)
+        response.raise_for_status()
+
     return response.json()
 
 def top_3_growth_coin_change(coins: list[dict]) -> list[dict]:
@@ -57,7 +118,6 @@ def show_table(growth: list[dict], fall: list[dict]):
     table = Table(title="Crypto Coins")
 
     with console.status("[green] Загрузка...[/]"):
-        sleep(1)
         keys_coins = (
             'id', 'name', 'symbol', 'price_change_percentage_24h', 'total_volume'
         )
