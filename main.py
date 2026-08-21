@@ -154,25 +154,10 @@ class CoinCollection:
         sorted_coins = sorted(self.coins, reverse=True)
         return sorted_coins[:qty_top]
 
+    def top_losers(self, qty_los=3):
+        sorted_coins = sorted(self.coins, reverse=False)
+        return sorted_coins[:qty_los]
 
-@retry(3, 2)
-def top_50_coin() -> list[dict]:
-    url = os.getenv("API_1_URL") + "/api/v3/coins/markets"
-    params = {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 50, "page": 1}
-
-    with requests.Session() as session:
-        response = session.get(url=url, params=params)
-        response.raise_for_status()
-
-    return response.json()
-
-def top_3_growth_coin_change(coins: list[dict]) -> list[dict]:
-    sorted_coins = sorted(coins, key=lambda coin: coin["price_change_percentage_24h"], reverse=True)
-    return sorted_coins[:3]
-
-def top_3_fall_coin_change(coins: list[dict]) -> list[dict]:
-    sorted_coins = sorted(coins, key=lambda coin: coin["price_change_percentage_24h"], reverse=False)
-    return sorted_coins[:3]
 
 def top_1_total_volume(coins: list[dict]) -> dict:
     return max(coins, key=lambda coin: coin["total_volume"])
@@ -244,6 +229,7 @@ def main():
 
     collection_1 = CoinCollection(coins_50_cg)
     top_gainers_cg = collection_1.top_gainers()
+    top_loser_cg = collection_1.top_losers()
 
 
     headers = {"Accept": "application/json", "X-CMC_PRO_API_KEY": os.getenv("API_KEY")}
@@ -254,16 +240,18 @@ def main():
 
     collection_2 = CoinCollection(coins_50_cmc)
     top_gainers_cmc = collection_2.top_gainers()
+    top_loser_cmc = collection_2.top_losers()
 
 
-    console.print(top_gainers_cg)
-    console.print(top_gainers_cmc)
+    # console.print(top_gainers_cg)
+    # console.print(top_gainers_cmc)
+    console.print(top_loser_cmc)
+    console.print(top_loser_cg)
 
 
 
-#     top_coins = top_50_coin()
-#     growth_coins = top_3_growth_coin_change(top_coins)
-#     fall_coins = top_3_fall_coin_change(top_coins)
+
+
 #     show_table(growth=growth_coins, fall=fall_coins)
 #     write_to_file(top_coins)
 
