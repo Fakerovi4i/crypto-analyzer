@@ -2,7 +2,7 @@ from datetime import datetime
 from time import sleep
 import functools
 import json
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, asdict
 from abc import ABC, abstractmethod
 
 from rich.console import Console
@@ -150,6 +150,8 @@ class ProviderCMC(BaseProvider):
 
 class CoinCollection:
     def __init__(self, coins: list[Coin]):
+        if not coins:
+            raise ValueError("CoinCollection must have at least one coin")
         self.coins = coins
 
     def top_gainers(self, qty: int = 3) -> list[Coin]:
@@ -168,7 +170,7 @@ class CoinCollection:
 
 class BaseOutput(ABC):
     @abstractmethod
-    def output(self, collection: CoinCollection) -> None:
+    def output(self, collection: CoinCollection, qty: int = 3) -> None:
         pass
 
 class ConsoleOutput(BaseOutput):
@@ -196,6 +198,29 @@ class ConsoleOutput(BaseOutput):
                 table.add_row(*row, style="red")
 
         self.console.print(table)
+
+class JsonOutput(BaseOutput):
+    def __init__(self, path: str):
+        self.path = path
+
+    def output(self, collection: CoinCollection, qty: int = 3) -> None:
+        result_dict = {
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "total_coins_analyzed": len(collection.coins),
+            "total_market_cap_usd": collection.total_market_cap(),
+            "top_gainers": [asdict(coin) for coin in collection.top_gainers(qty)],
+            "top_losers": [asdict(coin) for coin in collection.top_losers(qty)],
+            "highest_volume": asdict(collection.top_volume())
+        }
+
+        with open(self.path, "w", encoding="utf-8") as file:
+            json.dump(result_dict, file, indent=4, ensure_ascii=False)
+
+
+
+
+
+
 
 
 
@@ -248,7 +273,7 @@ def main(source: str = "coingecko", output: str = "console", top: int = 3):
     output_factories = {
         "console": lambda: ConsoleOutput(console),
         # "csv": "...",
-        # "json": "...",
+        "json": lambda: JsonOutput("crypto_report.json"),
     }
 
     prov_factory = provider_factories.get(source)
@@ -264,6 +289,8 @@ def main(source: str = "coingecko", output: str = "console", top: int = 3):
         raise ValueError("Invalid '--output'")
 
     collection = CoinCollection(coins_top_50)
+    if not collection.coins:
+        raise ValueError("collection.coin must have value")
     output_source = out_factory()
     output_source.output(collection, top)
 
