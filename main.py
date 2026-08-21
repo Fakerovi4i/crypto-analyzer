@@ -12,9 +12,10 @@ import requests
 import os
 import dotenv
 
+import typer
+
 dotenv.load_dotenv()
 
-console = Console()
 
 def retry(max_attempts: int, delay: int):
     def decorator(func):
@@ -29,7 +30,7 @@ def retry(max_attempts: int, delay: int):
                     if i == max_attempts:
                         raise requests.exceptions.RequestException(f"Connection Failed: {e}")
 
-                    with console.status(f"[yellow] Retrying connection [{i}]...[/]"):
+                    with Console().status(f"[yellow] Retrying connection [{i}]...[/]"):
                         sleep(delay)
 
             return result
@@ -199,27 +200,6 @@ class ConsoleOutput(BaseOutput):
 
 
 
-
-
-def show_table(growth: list[dict], fall: list[dict]):
-    table = Table(title="Crypto Coins")
-
-    with console.status("[green] Загрузка...[/]"):
-        keys_coins = (
-            'id', 'name', 'symbol', 'price_change_percentage_24h', 'total_volume'
-        )
-
-        for k in keys_coins:
-            table.add_column(k)
-
-        for g in growth:
-            table.add_row(*(str(g.get(k)) for k in keys_coins), style="green")
-
-        for f in fall:
-            table.add_row(*(str(f.get(k)) for k in keys_coins), style="red")
-
-        console.print(table)
-
 def make_dict(coins: list[dict]):
     total_market_cap = capitalize_coins(coins)
     top_3 = top_3_growth_coin_change(coins)
@@ -255,58 +235,42 @@ def write_to_file(coins: list[dict]):
         json.dump(data, file, indent=4, ensure_ascii=False)
 
 
-def main():
+def main(source: str = "coingecko", output: str = "console", top: int = 3):
+    console = Console()
+    provider_factories = {
+        "coingecko": lambda: ProviderCoingecko(Connector()),
+        "cmc": lambda: ProviderCMC(Connector(headers={
+            "Accept": "application/json",
+            "X-CMC_PRO_API_KEY": os.getenv("API_KEY"),
+        })),
+    }
 
-    conn_coingecko = Connector()
-    provider_coingecko = ProviderCoingecko(conn_coingecko)
+    output_factories = {
+        "console": lambda: ConsoleOutput(console),
+        # "csv": "...",
+        # "json": "...",
+    }
 
-    with conn_coingecko:
-        coins_50_cg = provider_coingecko.get_coins()
+    prov_factory = provider_factories.get(source)
+    if prov_factory is None:
+        raise ValueError("Invalid '--source'")
 
-    collection_1 = CoinCollection(coins_50_cg)
-    top_gainers_cg = collection_1.top_gainers()
-    top_loser_cg = collection_1.top_losers()
-    top_volume_cg = collection_1.top_volume()
-    cap_cg = collection_1.total_market_cap()
+    provider = prov_factory()
+    with provider.connector:
+        coins_top_50 = provider.get_coins()
 
+    out_factory = output_factories.get(output)
+    if out_factory is None:
+        raise ValueError("Invalid '--output'")
 
-
-    headers = {"Accept": "application/json", "X-CMC_PRO_API_KEY": os.getenv("API_KEY")}
-    conn_cmc = Connector(headers=headers)
-    provider_cmc = ProviderCMC(conn_cmc)
-    with conn_cmc:
-        coins_50_cmc = provider_cmc.get_coins()
-
-    collection_2 = CoinCollection(coins_50_cmc)
-    top_gainers_cmc = collection_2.top_gainers()
-    top_loser_cmc = collection_2.top_losers()
-    top_volume_cmc = collection_2.top_volume()
-    cap_cmc = collection_2.total_market_cap()
-
-
-
-    # console.print(top_gainers_cg)
-    # console.print(top_gainers_cmc)
-    # console.print(top_loser_cmc)
-    # console.print(top_loser_cg)
-    # console.print(top_volume_cmc)
-    # console.print(top_volume_cg)
-    # console.print(cap_cg)
-    # console.print(cap_cmc)
-    console_output = ConsoleOutput(console)
-    console_output.output(collection_1, 5)
-
-
-
-
-
-#     show_table(growth=growth_coins, fall=fall_coins)
-#     write_to_file(top_coins)
+    collection = CoinCollection(coins_top_50)
+    output_source = out_factory()
+    output_source.output(collection, top)
 
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)
 
 
 
