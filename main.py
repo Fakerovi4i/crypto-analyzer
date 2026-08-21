@@ -146,6 +146,7 @@ class ProviderCMC(BaseProvider):
         response: dict = self.connector.get(url=self.url, params=params)
         return response["data"]
 
+
 class CoinCollection:
     def __init__(self, coins: list[Coin]):
         self.coins = coins
@@ -158,12 +159,12 @@ class CoinCollection:
         sorted_coins = sorted(self.coins, reverse=False)
         return sorted_coins[:qty_los]
 
+    def top_volume(self):
+        return max(self.coins, key=lambda coin: coin.total_volume)
 
-def top_1_total_volume(coins: list[dict]) -> dict:
-    return max(coins, key=lambda coin: coin["total_volume"])
+    def capitalize_coins(self):
+        return sum(coin.market_cap for coin in self.coins)
 
-def capitalize_coins(coins: list[dict]) -> float:
-    return sum((coin["market_cap"] for coin in coins))
 
 def show_table(growth: list[dict], fall: list[dict]):
     table = Table(title="Crypto Coins")
@@ -230,6 +231,9 @@ def main():
     collection_1 = CoinCollection(coins_50_cg)
     top_gainers_cg = collection_1.top_gainers()
     top_loser_cg = collection_1.top_losers()
+    top_volume_cg = collection_1.top_volume()
+    cap_cg = collection_1.capitalize_coins()
+
 
 
     headers = {"Accept": "application/json", "X-CMC_PRO_API_KEY": os.getenv("API_KEY")}
@@ -241,12 +245,19 @@ def main():
     collection_2 = CoinCollection(coins_50_cmc)
     top_gainers_cmc = collection_2.top_gainers()
     top_loser_cmc = collection_2.top_losers()
+    top_volume_cmc = collection_2.top_volume()
+    cap_cmc = collection_2.capitalize_coins()
+
 
 
     # console.print(top_gainers_cg)
     # console.print(top_gainers_cmc)
-    console.print(top_loser_cmc)
-    console.print(top_loser_cg)
+    # console.print(top_loser_cmc)
+    # console.print(top_loser_cg)
+    # console.print(top_volume_cmc)
+    # console.print(top_volume_cg)
+    console.print(cap_cg)
+    console.print(cap_cmc)
 
 
 
