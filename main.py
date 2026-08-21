@@ -246,7 +246,7 @@ def main(source: str = "coingecko", output: str = "console", top: int = 3):
     console = Console()
     provider_factories = {
         "coingecko": lambda: ProviderCoingecko(Connector()),
-        "cmc": lambda: ProviderCMC(Connector(headers={
+        "coinmarketcap": lambda: ProviderCMC(Connector(headers={
             "Accept": "application/json",
             "X-CMC_PRO_API_KEY": os.getenv("API_KEY"),
         })),
