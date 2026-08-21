@@ -2,7 +2,7 @@ from datetime import datetime
 from time import sleep
 import functools
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from abc import ABC, abstractmethod
 
 from rich.console import Console
@@ -66,7 +66,7 @@ class Connector:
         self.session.close()
 
     @retry(3, 2)
-    def get(self, url, params) -> list[dict] | dict:
+    def get(self, url: str, params: dict) -> list[dict] | dict:
         if self.session is None:
             raise RuntimeError("'Connector' должен использоваться как контекстный менеджер")
         response = self.session.get(url=url, params=params, headers=self.headers)
@@ -151,19 +151,54 @@ class CoinCollection:
     def __init__(self, coins: list[Coin]):
         self.coins = coins
 
-    def top_gainers(self, qty_top=3):
+    def top_gainers(self, qty: int = 3) -> list[Coin]:
         sorted_coins = sorted(self.coins, reverse=True)
-        return sorted_coins[:qty_top]
+        return sorted_coins[:qty]
 
-    def top_losers(self, qty_los=3):
+    def top_losers(self, qty: int = 3) -> list[Coin]:
         sorted_coins = sorted(self.coins, reverse=False)
-        return sorted_coins[:qty_los]
+        return sorted_coins[:qty]
 
-    def top_volume(self):
+    def top_volume(self) -> Coin:
         return max(self.coins, key=lambda coin: coin.total_volume)
 
-    def capitalize_coins(self):
+    def total_market_cap(self) -> float:
         return sum(coin.market_cap for coin in self.coins)
+
+class BaseOutput(ABC):
+    @abstractmethod
+    def output(self, collection: CoinCollection) -> None:
+        pass
+
+class ConsoleOutput(BaseOutput):
+    def __init__(self, r_console: Console):
+        self.console = r_console
+
+
+    def output(self, collection: CoinCollection, qty: int = 3) -> None:
+        table = Table(title="Crypto Coins")
+
+        with self.console.status("[green] Загрузка...[/]"):
+            top = collection.top_gainers(qty=qty)
+            los = collection.top_losers(qty=qty)
+            keys = [key.name for key in fields(Coin)]
+
+            for key in keys:
+                table.add_column(key)
+
+            for coin in top:
+                row = [str(getattr(coin, key)) for key in keys]
+                table.add_row(*row, style="green")
+
+            for coin in los:
+                row = [str(getattr(coin, key)) for key in keys]
+                table.add_row(*row, style="red")
+
+        self.console.print(table)
+
+
+
+
 
 
 def show_table(growth: list[dict], fall: list[dict]):
@@ -232,7 +267,7 @@ def main():
     top_gainers_cg = collection_1.top_gainers()
     top_loser_cg = collection_1.top_losers()
     top_volume_cg = collection_1.top_volume()
-    cap_cg = collection_1.capitalize_coins()
+    cap_cg = collection_1.total_market_cap()
 
 
 
@@ -246,7 +281,7 @@ def main():
     top_gainers_cmc = collection_2.top_gainers()
     top_loser_cmc = collection_2.top_losers()
     top_volume_cmc = collection_2.top_volume()
-    cap_cmc = collection_2.capitalize_coins()
+    cap_cmc = collection_2.total_market_cap()
 
 
 
@@ -256,8 +291,10 @@ def main():
     # console.print(top_loser_cg)
     # console.print(top_volume_cmc)
     # console.print(top_volume_cg)
-    console.print(cap_cg)
-    console.print(cap_cmc)
+    # console.print(cap_cg)
+    # console.print(cap_cmc)
+    console_output = ConsoleOutput(console)
+    console_output.output(collection_1, 5)
 
 
 
