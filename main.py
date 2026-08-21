@@ -1,17 +1,16 @@
 from datetime import datetime
 from time import sleep
 import functools
-import json
 from dataclasses import dataclass, fields, asdict
 from abc import ABC, abstractmethod
+import json
+import os
+import csv
 
 from rich.console import Console
 from rich.table import Table
 import requests
-
-import os
 import dotenv
-
 import typer
 
 dotenv.load_dotenv()
@@ -116,6 +115,7 @@ class ProviderCoingecko(BaseProvider):
         response: list[dict] = self.connector.get(url=self.url, params=params)
         return response
 
+
 class ProviderCMC(BaseProvider):
     def __init__(self, connector: Connector, host: str = "https://pro-api.coinmarketcap.com", path: str = "/v3/cryptocurrency/listings/latest"):
         self.host = host
@@ -168,10 +168,12 @@ class CoinCollection:
     def total_market_cap(self) -> float:
         return sum(coin.market_cap for coin in self.coins)
 
+
 class BaseOutput(ABC):
     @abstractmethod
     def output(self, collection: CoinCollection, qty: int = 3) -> None:
         pass
+
 
 class ConsoleOutput(BaseOutput):
     def __init__(self, r_console: Console):
@@ -199,6 +201,7 @@ class ConsoleOutput(BaseOutput):
 
         self.console.print(table)
 
+
 class JsonOutput(BaseOutput):
     def __init__(self, path: str):
         self.path = path
@@ -217,47 +220,26 @@ class JsonOutput(BaseOutput):
             json.dump(result_dict, file, indent=4, ensure_ascii=False)
 
 
+class CsvOutput(BaseOutput):
+    def __init__(self, path: str):
+        self.path = path
+
+    def output(self, collection: CoinCollection, qty: int = 3) -> None:
+        result = []
+
+        columns_key = [key.name for key in fields(Coin)]
+        rows_top = [[str(getattr(coin, key)) for key in columns_key] for coin in collection.top_gainers(qty=qty)]
+        rows_los = [[str(getattr(coin, key)) for key in columns_key] for coin in collection.top_losers(qty=qty)]
+
+        result.append(columns_key)
+        result.extend(rows_top)
+        result.extend(rows_los)
+
+        with open(self.path, "w", newline='', encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerows(result)
 
 
-
-
-
-
-
-
-def make_dict(coins: list[dict]):
-    total_market_cap = capitalize_coins(coins)
-    top_3 = top_3_growth_coin_change(coins)
-    lose_3 = top_3_fall_coin_change(coins)
-    high_volume = top_1_total_volume(coins)
-    result_dict = {
-        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "total_coins_analyzed": len(coins),
-        "total_market_cap_usd": total_market_cap,
-        "top_gainers": [],
-        "top_losers": [],
-        "highest_volume": {}
-    }
-
-    keys = ["name", "symbol", "change_24h"]
-    keys_values = ["name", "symbol", "price_change_percentage_24h"]
-
-    for i in range(3):
-        result_dict["top_gainers"].append({keys[j]: top_3[i][keys_values[j]] for j in range(3)})
-
-    for i in range(3):
-        result_dict["top_losers"].append({keys[j]: lose_3[i][keys_values[j]] for j in range(3)})
-
-    keys = ["name", "symbol", "volume_usd"]
-    keys_values = ["name", "symbol", "total_volume"]
-    result_dict["highest_volume"] = {keys[i]: high_volume[keys_values[i]] for i in range(3)}
-
-    return result_dict
-
-def write_to_file(coins: list[dict]):
-    data = make_dict(coins)
-    with open("crypto_report.json", "w") as file:
-        json.dump(data, file, indent=4, ensure_ascii=False)
 
 
 def main(source: str = "coingecko", output: str = "console", top: int = 3):
@@ -272,7 +254,7 @@ def main(source: str = "coingecko", output: str = "console", top: int = 3):
 
     output_factories = {
         "console": lambda: ConsoleOutput(console),
-        # "csv": "...",
+        "csv": lambda: CsvOutput("crypto_report.csv"),
         "json": lambda: JsonOutput("crypto_report.json"),
     }
 
@@ -294,6 +276,8 @@ def main(source: str = "coingecko", output: str = "console", top: int = 3):
     output_source = out_factory()
     output_source.output(collection, top)
 
+    if output != "console":
+        console.print(f"Готово: результат записан в {output_source.path}", style="bold yellow")
 
 
 if __name__ == "__main__":
