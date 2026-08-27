@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from time import sleep
 import functools
 from dataclasses import dataclass, fields, asdict
@@ -75,6 +76,24 @@ class Connector:
 
 
 class BaseProvider(ABC):
+    def __init__(
+            self,
+            connector: Connector,
+            host: str,
+            path: str
+    ):
+        self.connector = connector
+        self.host = host
+        self.path = path
+        self.url = self.host + self.path
+
+    def __enter__(self):
+        self.connector.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return self.connector.__exit__(exc_type, exc_val, exc_tb)
+
     @abstractmethod
     def get_coins(self, params: dict | None) -> list[Coin]:
         pass
@@ -85,11 +104,13 @@ class BaseProvider(ABC):
 
 
 class ProviderCoingecko(BaseProvider):
-    def __init__(self, connector: Connector, host: str = "https://api.coingecko.com", path: str = "/api/v3/coins/markets/"):
-        self.host = host
-        self.path = path
-        self.url = self.host + self.path
-        self.connector = connector
+    def __init__(
+            self,
+            connector: Connector,
+            host: str = "https://api.coingecko.com",
+            path: str = "/api/v3/coins/markets/"
+    ):
+        super().__init__(connector, host, path)
 
 
     def get_coins(self, params: dict | None = None) -> list[Coin]:
@@ -117,11 +138,13 @@ class ProviderCoingecko(BaseProvider):
 
 
 class ProviderCMC(BaseProvider):
-    def __init__(self, connector: Connector, host: str = "https://pro-api.coinmarketcap.com", path: str = "/v3/cryptocurrency/listings/latest"):
-        self.host = host
-        self.path = path
-        self.url = self.host + self.path
-        self.connector = connector
+    def __init__(
+            self,
+            connector: Connector,
+            host: str = "https://pro-api.coinmarketcap.com",
+            path: str = "/v3/cryptocurrency/listings/latest"
+    ):
+        super().__init__(connector, host, path)
 
 
     def get_coins(self, params: dict | None = None) -> list[Coin]:
@@ -169,12 +192,22 @@ class CoinCollection:
         return sum(coin.market_cap for coin in self.coins)
 
 
+OUTPUT_REGISTRY = {}
+def register_output(name: str):
+    def decorator(cls):
+        OUTPUT_REGISTRY[name] = cls
+        return cls
+
+    return decorator
+
+
 class BaseOutput(ABC):
     @abstractmethod
     def output(self, collection: CoinCollection, qty: int = 3) -> None:
         pass
 
 
+@register_output("console")
 class ConsoleOutput(BaseOutput):
     def __init__(self, r_console: Console):
         self.console = r_console
@@ -202,8 +235,9 @@ class ConsoleOutput(BaseOutput):
         self.console.print(table)
 
 
+@register_output("json")
 class JsonOutput(BaseOutput):
-    def __init__(self, path: str):
+    def __init__(self, path: str = "crypto_report.json"):
         self.path = path
 
     def output(self, collection: CoinCollection, qty: int = 3) -> None:
@@ -219,9 +253,9 @@ class JsonOutput(BaseOutput):
         with open(self.path, "w", encoding="utf-8") as file:
             json.dump(result_dict, file, indent=4, ensure_ascii=False)
 
-
+@register_output("csv")
 class CsvOutput(BaseOutput):
-    def __init__(self, path: str):
+    def __init__(self, path: str = "crypto_report.csv"):
         self.path = path
 
     def output(self, collection: CoinCollection, qty: int = 3) -> None:
@@ -240,9 +274,17 @@ class CsvOutput(BaseOutput):
             writer.writerows(result)
 
 
+class Source(str, Enum):
+    coingecko = "coingecko"
+    coinmarketcap = "coinmarketcap"
 
 
-def main(source: str = "coingecko", output: str = "console", top: int = 3):
+class OutputFormat(str, Enum):
+    console = "console"
+    json = "json"
+    csv = "csv"
+
+def main(source: Source = Source.coingecko, output: OutputFormat = OutputFormat.console, top: int = 3):
     console = Console()
     provider_factories = {
         "coingecko": lambda: ProviderCoingecko(Connector()),
@@ -252,37 +294,34 @@ def main(source: str = "coingecko", output: str = "console", top: int = 3):
         })),
     }
 
-    output_factories = {
-        "console": lambda: ConsoleOutput(console),
-        "csv": lambda: CsvOutput("crypto_report.csv"),
-        "json": lambda: JsonOutput("crypto_report.json"),
-    }
 
     prov_factory = provider_factories.get(source)
     if prov_factory is None:
         raise ValueError("Invalid '--source'")
 
     provider = prov_factory()
-    with provider.connector:
+    with provider:
         coins_top_50 = provider.get_coins()
 
-    out_factory = output_factories.get(output)
-    if out_factory is None:
+    output_class = OUTPUT_REGISTRY.get(output)
+    if output_class is None:
         raise ValueError("Invalid '--output'")
 
+    if output == "console":
+        output_source = output_class(console)
+    else:
+        output_source = output_class()
+
     collection = CoinCollection(coins_top_50)
-    if not collection.coins:
-        raise ValueError("collection.coin must have value")
-    output_source = out_factory()
+
+    output_source = output_source
     output_source.output(collection, top)
 
     if output != "console":
         console.print(f"Готово: результат записан в {output_source.path}", style="bold yellow")
 
 
+
+
 if __name__ == "__main__":
     typer.run(main)
-
-
-
-
