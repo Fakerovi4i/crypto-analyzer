@@ -20,17 +20,17 @@ dotenv.load_dotenv()
 def retry(max_attempts: int, delay: int):
     def decorator(func):
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(self, *args, **kwargs):
             result = None
             for i in range(1, max_attempts+1):
                 try:
-                    result =  func(*args, **kwargs)
+                    result =  func(self, *args, **kwargs)
                     break
                 except requests.exceptions.RequestException as e:
                     if i == max_attempts:
                         raise requests.exceptions.RequestException(f"Connection Failed: {e}")
 
-                    with Console().status(f"[yellow] Retrying connection [{i}]...[/]"):
+                    with self.console.status(f"[yellow] Retrying connection [{i}]...[/]"):
                         sleep(delay)
 
             return result
@@ -55,8 +55,9 @@ class Coin:
 
 
 class Connector:
-    def __init__(self, headers: dict | None = None):
+    def __init__(self, console: Console, headers: dict | None = None):
         self.headers = headers
+        self.console = console
         self.session: requests.Session | None = None
 
     def __enter__(self):
@@ -197,11 +198,14 @@ def register_output(name: str):
     def decorator(cls):
         OUTPUT_REGISTRY[name] = cls
         return cls
-
     return decorator
 
 
 class BaseOutput(ABC):
+    def __init__(self, console: Console):
+        self.console = console
+
+
     @abstractmethod
     def output(self, collection: CoinCollection, qty: int = 3) -> None:
         pass
@@ -209,10 +213,6 @@ class BaseOutput(ABC):
 
 @register_output("console")
 class ConsoleOutput(BaseOutput):
-    def __init__(self, r_console: Console):
-        self.console = r_console
-
-
     def output(self, collection: CoinCollection, qty: int = 3) -> None:
         table = Table(title="Crypto Coins")
 
@@ -237,7 +237,8 @@ class ConsoleOutput(BaseOutput):
 
 @register_output("json")
 class JsonOutput(BaseOutput):
-    def __init__(self, path: str = "crypto_report.json"):
+    def __init__(self, console: Console, path: str = "crypto_report.json"):
+        super().__init__(console)
         self.path = path
 
     def output(self, collection: CoinCollection, qty: int = 3) -> None:
@@ -253,9 +254,12 @@ class JsonOutput(BaseOutput):
         with open(self.path, "w", encoding="utf-8") as file:
             json.dump(result_dict, file, indent=4, ensure_ascii=False)
 
+        self.console.print(f"[green]Отчет сохранен в {self.path}[/]")
+
 @register_output("csv")
 class CsvOutput(BaseOutput):
-    def __init__(self, path: str = "crypto_report.csv"):
+    def __init__(self, console: Console, path: str = "crypto_report.csv"):
+        super().__init__(console)
         self.path = path
 
     def output(self, collection: CoinCollection, qty: int = 3) -> None:
@@ -273,6 +277,8 @@ class CsvOutput(BaseOutput):
             writer = csv.writer(file)
             writer.writerows(result)
 
+        self.console.print(f"[green]Отчет сохранен в {self.path}[/]")
+
 
 class Source(str, Enum):
     coingecko = "coingecko"
@@ -286,14 +292,14 @@ class OutputFormat(str, Enum):
 
 def main(source: Source = Source.coingecko, output: OutputFormat = OutputFormat.console, top: int = 3):
     console = Console()
+
     provider_factories = {
-        "coingecko": lambda: ProviderCoingecko(Connector()),
-        "coinmarketcap": lambda: ProviderCMC(Connector(headers={
+        "coingecko": lambda: ProviderCoingecko(Connector(console)),
+        "coinmarketcap": lambda: ProviderCMC(Connector(console, headers={
             "Accept": "application/json",
             "X-CMC_PRO_API_KEY": os.getenv("API_KEY"),
         })),
     }
-
 
     prov_factory = provider_factories.get(source)
     if prov_factory is None:
@@ -307,20 +313,10 @@ def main(source: Source = Source.coingecko, output: OutputFormat = OutputFormat.
     if output_class is None:
         raise ValueError("Invalid '--output'")
 
-    if output == "console":
-        output_source = output_class(console)
-    else:
-        output_source = output_class()
-
     collection = CoinCollection(coins_top_50)
 
-    output_source = output_source
+    output_source = output_class(console)
     output_source.output(collection, top)
-
-    if output != "console":
-        console.print(f"Готово: результат записан в {output_source.path}", style="bold yellow")
-
-
 
 
 if __name__ == "__main__":
