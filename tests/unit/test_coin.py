@@ -24,12 +24,21 @@ def test_coin_create_successful():
     "params", [
         ({"id": 123}),
         ({"name": ""}),
-        ({"symbol": 12}),
+        ({"symbol": "  "}),
         ({"price_change_percentage_24h": []}),
         ({"total_volume": -1}),
         ({"market_cap": -1}),
         ({"market_cap": ""}),
-    ]
+    ],
+    ids=[
+        "id_not_string",
+        "name_empty",
+        "symbol_whitespace_only",
+        "price_change_not_number",
+        "total_volume_negative",
+        "market_cap_negative",
+        "market_cap_not_number",
+    ],
 )
 def test_coin_validate_failed(make_coin_fixture, params):
     with pytest.raises(ValueError):
