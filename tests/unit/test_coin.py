@@ -58,3 +58,11 @@ def test_coin_negative_price_change_is_valid(make_coin_fixture):
     coin = make_coin_fixture(price_change_percentage_24h=-10.5)
 
     assert coin.price_change_percentage_24h == -10.5
+
+
+def test_coin_dunder_lt(make_coin_fixture):
+    coin1 = make_coin_fixture(price_change_percentage_24h=10.5)
+    coin2 = make_coin_fixture(price_change_percentage_24h=5.2)
+
+    assert coin1 > coin2
+    assert coin2 < coin1
