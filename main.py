@@ -48,7 +48,12 @@ class Coin:
     market_cap: float
 
     def __str__(self):
-        return f"class: {self.__class__.__name__} | name: {self.name} | id: {self.id} | price_change_24: {self.price_change_percentage_24h}"
+        return (
+            f"class: {self.__class__.__name__} | "
+            f"name: {self.name} | "
+            f"id: {self.id} | "
+            f"price_change_24: {self.price_change_percentage_24h}"
+        )
 
     def __lt__(self, other):
         return self.price_change_percentage_24h < other.price_change_percentage_24h
