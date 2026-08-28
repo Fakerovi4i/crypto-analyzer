@@ -1,142 +1,346 @@
 from datetime import datetime
+from enum import Enum
 from time import sleep
 import functools
+from dataclasses import dataclass, fields, asdict
+from abc import ABC, abstractmethod
 import json
-from typing import Any
+import os
+import csv
 
 from rich.console import Console
 from rich.table import Table
 import requests
+import dotenv
+import typer
 
-
-API_URL = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&page=1"
-console = Console()
+dotenv.load_dotenv()
 
 
 def retry(max_attempts: int, delay: int):
     def decorator(func):
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            for _ in range(max_attempts):
+        def wrapper(self, *args, **kwargs):
+            result = None
+            for i in range(1, max_attempts+1):
                 try:
-                    result = func(*args, **kwargs)
-                except requests.exceptions.RequestException:
-                    with console.status("[yellow] Повторная попытка подключения...[/]"):
+                    result =  func(self, *args, **kwargs)
+                    break
+                except requests.exceptions.RequestException as e:
+                    if i == max_attempts:
+                        raise requests.exceptions.RequestException(f"Connection Failed: {e}")
+
+                    with self.console.status(f"[yellow] Retrying connection [{i}]...[/]"):
                         sleep(delay)
-                else:
-                    return result
-            raise requests.exceptions.RequestException("Не удалось подключиться, возможно неверный URL")
+
+            return result
         return wrapper
     return decorator
 
-@retry(3, 2)
-def top_50_coin() -> list[dict] | Any:
-    with console.status("[green] Загрузка...[/]"):
-        response = requests.get(API_URL)
+
+@dataclass
+class Coin:
+    id: str
+    name: str
+    symbol: str
+    price_change_percentage_24h: float
+    total_volume: float
+    market_cap: float
+
+    def __str__(self):
+        return f"class: {self.__class__.__name__} | name: {self.name} | id: {self.id} | price_change_24: {self.price_change_percentage_24h}"
+
+    def __lt__(self, other):
+        return self.price_change_percentage_24h < other.price_change_percentage_24h
+
+
+class Connector:
+    def __init__(self, console: Console, headers: dict | None = None):
+        self.headers = headers
+        self.console = console
+        self.session: requests.Session | None = None
+
+    def __enter__(self):
+        self.session = requests.Session()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.session.close()
+
+    @retry(3, 2)
+    def get(self, url: str, params: dict) -> list[dict] | dict:
+        if self.session is None:
+            raise RuntimeError("'Connector' должен использоваться как контекстный менеджер")
+        response = self.session.get(url=url, params=params, headers=self.headers)
         response.raise_for_status()
         return response.json()
 
-def top_3_growth_coin_change(coins: list[dict]) -> list[dict]:
-    sorted_coins = sorted(coins, key=lambda coin: coin.get("price_change_percentage_24h", 0), reverse=True)
-    return sorted_coins[:3]
 
-def top_3_fall_coin_change(coins: list[dict]) -> list[dict]:
-    sorted_coins = sorted(coins, key=lambda coin: coin.get("price_change_percentage_24h", 0), reverse=False)
-    return sorted_coins[:3]
-
-def top_1_total_volume(coins: list[dict]) -> dict:
-    return max(coins, key=lambda coin: coin["total_volume"])
-
-def capitalize_coins(coins: list[dict]) -> float:
-    return sum((coin["market_cap"] for coin in coins))
-
-def show_table(growth: list[dict], fall: list[dict]):
-    table = Table(title="Crypto Coins")
-    keys_coins = (
-        'id', 'name', 'symbol', 'price_change_percentage_24h', 'total_volume'
-    )
-
-    for k in keys_coins:
-        table.add_column(k)
-
-    for g in growth:
-        table.add_row(*(str(g.get(k)) for k in keys_coins), style="green")
-
-    for f in fall:
-        table.add_row(*(str(f.get(k)) for k in keys_coins), style="red")
-
-    console.print(table)
-
-def to_entry(coin: dict, mapping: dict) -> dict:
-    return {k: coin.get(v, None) for k, v in mapping.items()}
+PROVIDER_REGISTRY = {}
+def register_provider(name: str):
+    def decorator(cls):
+        PROVIDER_REGISTRY[name] = cls
+        return cls
+    return decorator
 
 
-def make_dict(
-        top_3: list[dict],
-        lose_3: list[dict],
-        high_volume: dict,
-        total_market_cap: float,
-        len_coins: int
-) -> dict:
-    result_dict = {
-        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "total_coins_analyzed": len_coins,
-        "total_market_cap_usd": total_market_cap,
-        "top_gainers": [],
-        "top_losers": [],
-        "highest_volume": {}
-    }
+class BaseProvider(ABC):
+    def __init__(
+            self,
+            connector: Connector,
+            host: str,
+            path: str
+    ):
+        self.connector = connector
+        self.host = host
+        self.path = path
+        self.url = self.host + self.path
 
-    mapping_keys = {
-        "name": "name",
-        "symbol": "symbol",
-        "change_24h": "price_change_percentage_24h"
-    }
+    def __enter__(self):
+        self.connector.__enter__()
+        return self
 
-    result_dict["top_gainers"] = [to_entry(coin, mapping_keys) for coin in top_3]
-    result_dict["top_losers"] = [to_entry(coin, mapping_keys) for coin in lose_3]
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return self.connector.__exit__(exc_type, exc_val, exc_tb)
 
-    mapping_keys = {
-        "name": "name",
-        "symbol": "symbol",
-        "volume_usd": "total_volume"
-    }
+    @abstractmethod
+    def get_coins(self, params: dict | None) -> list[Coin]:
+        pass
 
-    result_dict["highest_volume"] = to_entry(high_volume, mapping_keys)
+    @abstractmethod
+    def fetch_raw(self, params: dict) -> list[dict]:
+        pass
 
-    return result_dict
+    @classmethod
+    def build_headers(cls) -> dict | None:
+        return None
 
-def write_to_file(data: dict) -> None:
-    with open("crypto_report.json", "w", encoding="utf-8") as file:
-        json.dump(data, file, indent=4, ensure_ascii=False)
+@register_provider("coingecko")
+class ProviderCoingecko(BaseProvider):
+    def __init__(
+            self,
+            connector: Connector,
+            host: str = "https://api.coingecko.com",
+            path: str = "/api/v3/coins/markets/"
+    ):
+        super().__init__(connector, host, path)
 
-def main():
-    top_coins = top_50_coin()
 
-    if not top_coins:
-        console.print("Не удалось получить данные о криптовалютах.")
-        return
+    def get_coins(self, params: dict | None = None) -> list[Coin]:
+        if params is None:
+            params = {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 50, "page": 1}
 
-    growth_coins = top_3_growth_coin_change(top_coins)
-    fall_coins = top_3_fall_coin_change(top_coins)
-    high_volume = top_1_total_volume(top_coins)
-    total_market_cap = capitalize_coins(top_coins)
-    len_coins = len(top_coins)
-    data = make_dict(
-        growth_coins,
-        fall_coins,
-        high_volume,
-        total_market_cap,
-        len_coins
-    )
+        raw_data = self.fetch_raw(params)
+        coins = [
+            Coin(
+                item["id"],
+                item["name"],
+                item["symbol"],
+                item["price_change_percentage_24h"],
+                item["total_volume"],
+                item["market_cap"],
+            )
+            for item in raw_data
+        ]
+        return coins
 
-    show_table(growth=growth_coins, fall=fall_coins)
-    write_to_file(data)
+
+    def fetch_raw(self, params: dict) -> list[dict]:
+        response: list[dict] = self.connector.get(url=self.url, params=params)
+        return response
+
+
+@register_provider("coinmarketcap")
+class ProviderCMC(BaseProvider):
+    def __init__(
+            self,
+            connector: Connector,
+            host: str = "https://pro-api.coinmarketcap.com",
+            path: str = "/v3/cryptocurrency/listings/latest"
+    ):
+        super().__init__(connector, host, path)
+
+    @classmethod
+    def build_headers(cls) -> dict | None:
+        return {
+            "Accept": "application/json",
+            "X-CMC_PRO_API_KEY": os.getenv("API_KEY")
+        }
+
+    def get_coins(self, params: dict | None = None) -> list[Coin]:
+        if params is None:
+            params = {"sort": "market_cap", "sort_dir": "desc", "limit": "50"}
+
+        raw_data: list[dict] = self.fetch_raw(params)
+        coins = [
+            Coin(
+                id=item["id"],
+                name=item["name"],
+                symbol=item["symbol"],
+                price_change_percentage_24h=item["quote"][0]["percent_change_24h"],
+                total_volume=item["quote"][0]["volume_24h"],
+                market_cap=item["quote"][0]["market_cap"],
+            )
+            for item in raw_data
+        ]
+        return coins
+
+
+    def fetch_raw(self, params: dict) -> list[dict]:
+        response: dict = self.connector.get(url=self.url, params=params)
+        return response["data"]
+
+
+class CoinCollection:
+    def __init__(self, coins: list[Coin]):
+        if not coins:
+            raise ValueError("CoinCollection must have at least one coin")
+        self.coins = coins
+
+    def top_gainers(self, qty: int = 3) -> list[Coin]:
+        sorted_coins = sorted(self.coins, reverse=True)
+        return sorted_coins[:qty]
+
+    def top_losers(self, qty: int = 3) -> list[Coin]:
+        sorted_coins = sorted(self.coins, reverse=False)
+        return sorted_coins[:qty]
+
+    def top_volume(self) -> Coin:
+        return max(self.coins, key=lambda coin: coin.total_volume)
+
+    def total_market_cap(self) -> float:
+        return sum(coin.market_cap for coin in self.coins)
+
+
+OUTPUT_REGISTRY = {}
+def register_output(name: str):
+    def decorator(cls):
+        OUTPUT_REGISTRY[name] = cls
+        return cls
+    return decorator
+
+
+class BaseOutput(ABC):
+    def __init__(self, console: Console):
+        self.console = console
+
+
+    @abstractmethod
+    def output(self, collection: CoinCollection, qty: int = 3) -> None:
+        pass
+
+    @classmethod
+    def _column(cls) -> list:
+        return [key.name for key in fields(Coin)]
+
+    def _row(self, coin: Coin) -> list:
+        return [str(getattr(coin, key)) for key in self._column()]
+
+
+
+
+@register_output("console")
+class ConsoleOutput(BaseOutput):
+    def output(self, collection: CoinCollection, qty: int = 3) -> None:
+        table = Table(title="Crypto Coins")
+
+        with self.console.status("[green] Загрузка...[/]"):
+            top = collection.top_gainers(qty=qty)
+            los = collection.top_losers(qty=qty)
+
+            for col in self._column():
+                table.add_column(col)
+
+            for coin in top:
+                row = self._row(coin)
+                table.add_row(*row, style="green")
+
+            for coin in los:
+                row = self._row(coin)
+                table.add_row(*row, style="red")
+
+        self.console.print(table)
+
+
+@register_output("json")
+class JsonOutput(BaseOutput):
+    def __init__(self, console: Console, path: str = "crypto_report.json"):
+        super().__init__(console)
+        self.path = path
+
+    def output(self, collection: CoinCollection, qty: int = 3) -> None:
+        result_dict = {
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "total_coins_analyzed": len(collection.coins),
+            "total_market_cap_usd": collection.total_market_cap(),
+            "top_gainers": [asdict(coin) for coin in collection.top_gainers(qty)],
+            "top_losers": [asdict(coin) for coin in collection.top_losers(qty)],
+            "highest_volume": asdict(collection.top_volume())
+        }
+
+        with open(self.path, "w", encoding="utf-8") as file:
+            json.dump(result_dict, file, indent=4, ensure_ascii=False)
+
+        self.console.print(f"[green]Отчет сохранен в {self.path}[/]")
+
+@register_output("csv")
+class CsvOutput(BaseOutput):
+    def __init__(self, console: Console, path: str = "crypto_report.csv"):
+        super().__init__(console)
+        self.path = path
+
+    def output(self, collection: CoinCollection, qty: int = 3) -> None:
+        result = []
+
+        rows_top = [self._row(coin) for coin in collection.top_gainers(qty=qty)]
+        rows_los = [self._row(coin) for coin in collection.top_losers(qty=qty)]
+
+        result.append(self._column())
+        result.extend(rows_top)
+        result.extend(rows_los)
+
+        with open(self.path, "w", newline='', encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerows(result)
+
+        self.console.print(f"[green]Отчет сохранен в {self.path}[/]")
+
+
+class Source(str, Enum):
+    coingecko = "coingecko"
+    coinmarketcap = "coinmarketcap"
+
+
+class OutputFormat(str, Enum):
+    console = "console"
+    json = "json"
+    csv = "csv"
+
+def main(source: Source = Source.coingecko, output: OutputFormat = OutputFormat.console, top: int = 3):
+    console = Console()
+
+    provider_class = PROVIDER_REGISTRY.get(source)
+    if provider_class is None:
+        raise ValueError("Invalid '--source'")
+
+    connector = Connector(console, headers=provider_class.build_headers())
+    provider = provider_class(connector)
+
+    try:
+        with provider:
+            coins_top_50 = provider.get_coins()
+        collection = CoinCollection(coins_top_50)
+    except requests.exceptions.RequestException as e:
+        console.print(f"[red]Ошибка подключения к провайдеру: {e}[/]")
+        raise
+    except ValueError as e:
+        console.print(f"[red]Ошибка данных: {e}[/]")
+        raise
+
+    output_class = OUTPUT_REGISTRY.get(output)
+    output_source = output_class(console)
+    output_source.output(collection, top)
 
 
 if __name__ == "__main__":
-    main()
-
-
-
-
+    typer.run(main)
