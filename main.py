@@ -76,6 +76,14 @@ class Connector:
         return response.json()
 
 
+PROVIDER_REGISTRY = {}
+def register_provider(name: str):
+    def decorator(cls):
+        PROVIDER_REGISTRY[name] = cls
+        return cls
+    return decorator
+
+
 class BaseProvider(ABC):
     def __init__(
             self,
@@ -103,7 +111,11 @@ class BaseProvider(ABC):
     def fetch_raw(self, params: dict) -> list[dict]:
         pass
 
+    @classmethod
+    def build_headers(cls) -> dict | None:
+        return None
 
+@register_provider("coingecko")
 class ProviderCoingecko(BaseProvider):
     def __init__(
             self,
@@ -138,6 +150,7 @@ class ProviderCoingecko(BaseProvider):
         return response
 
 
+@register_provider("coinmarketcap")
 class ProviderCMC(BaseProvider):
     def __init__(
             self,
@@ -147,6 +160,12 @@ class ProviderCMC(BaseProvider):
     ):
         super().__init__(connector, host, path)
 
+    @classmethod
+    def build_headers(cls) -> dict | None:
+        return {
+            "Accept": "application/json",
+            "X-CMC_PRO_API_KEY": os.getenv("API_KEY")
+        }
 
     def get_coins(self, params: dict | None = None) -> list[Coin]:
         if params is None:
@@ -210,6 +229,15 @@ class BaseOutput(ABC):
     def output(self, collection: CoinCollection, qty: int = 3) -> None:
         pass
 
+    @classmethod
+    def _column(cls) -> list:
+        return [key.name for key in fields(Coin)]
+
+    def _row(self, coin: Coin) -> list:
+        return [str(getattr(coin, key)) for key in self._column()]
+
+
+
 
 @register_output("console")
 class ConsoleOutput(BaseOutput):
@@ -219,17 +247,16 @@ class ConsoleOutput(BaseOutput):
         with self.console.status("[green] Загрузка...[/]"):
             top = collection.top_gainers(qty=qty)
             los = collection.top_losers(qty=qty)
-            keys = [key.name for key in fields(Coin)]
 
-            for key in keys:
-                table.add_column(key)
+            for col in self._column():
+                table.add_column(col)
 
             for coin in top:
-                row = [str(getattr(coin, key)) for key in keys]
+                row = self._row(coin)
                 table.add_row(*row, style="green")
 
             for coin in los:
-                row = [str(getattr(coin, key)) for key in keys]
+                row = self._row(coin)
                 table.add_row(*row, style="red")
 
         self.console.print(table)
@@ -265,11 +292,10 @@ class CsvOutput(BaseOutput):
     def output(self, collection: CoinCollection, qty: int = 3) -> None:
         result = []
 
-        columns_key = [key.name for key in fields(Coin)]
-        rows_top = [[str(getattr(coin, key)) for key in columns_key] for coin in collection.top_gainers(qty=qty)]
-        rows_los = [[str(getattr(coin, key)) for key in columns_key] for coin in collection.top_losers(qty=qty)]
+        rows_top = [self._row(coin) for coin in collection.top_gainers(qty=qty)]
+        rows_los = [self._row(coin) for coin in collection.top_losers(qty=qty)]
 
-        result.append(columns_key)
+        result.append(self._column())
         result.extend(rows_top)
         result.extend(rows_los)
 
@@ -293,28 +319,25 @@ class OutputFormat(str, Enum):
 def main(source: Source = Source.coingecko, output: OutputFormat = OutputFormat.console, top: int = 3):
     console = Console()
 
-    provider_factories = {
-        "coingecko": lambda: ProviderCoingecko(Connector(console)),
-        "coinmarketcap": lambda: ProviderCMC(Connector(console, headers={
-            "Accept": "application/json",
-            "X-CMC_PRO_API_KEY": os.getenv("API_KEY"),
-        })),
-    }
-
-    prov_factory = provider_factories.get(source)
-    if prov_factory is None:
+    provider_class = PROVIDER_REGISTRY.get(source)
+    if provider_class is None:
         raise ValueError("Invalid '--source'")
 
-    provider = prov_factory()
-    with provider:
-        coins_top_50 = provider.get_coins()
+    connector = Connector(console, headers=provider_class.build_headers())
+    provider = provider_class(connector)
+
+    try:
+        with provider:
+            coins_top_50 = provider.get_coins()
+        collection = CoinCollection(coins_top_50)
+    except requests.exceptions.RequestException as e:
+        console.print(f"[red]Ошибка подключения к провайдеру: {e}[/]")
+        raise
+    except ValueError as e:
+        console.print(f"[red]Ошибка данных: {e}[/]")
+        raise
 
     output_class = OUTPUT_REGISTRY.get(output)
-    if output_class is None:
-        raise ValueError("Invalid '--output'")
-
-    collection = CoinCollection(coins_top_50)
-
     output_source = output_class(console)
     output_source.output(collection, top)
 
