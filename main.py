@@ -47,6 +47,28 @@ class Coin:
     total_volume: float
     market_cap: float
 
+    def __post_init__(self):
+        str_fields = {"id": self.id, "name": self.name, "symbol": self.symbol}
+        for name, value in str_fields.items():
+            if not isinstance(value, str):
+                raise ValueError(f"{name} must be a string")
+            if not value.strip():
+                raise ValueError(f"{name} must not be empty")
+
+        num_fields = {
+            "price_change_percentage_24h": self.price_change_percentage_24h,
+            "total_volume": self.total_volume,
+            "market_cap": self.market_cap,
+        }
+        for name, value in num_fields.items():
+            if not isinstance(value, (int, float)):
+                raise ValueError(f"{name} must be a number")
+
+        if self.total_volume < 0:
+            raise ValueError("total_volume must not be negative")
+        if self.market_cap < 0:
+            raise ValueError("market_cap must not be negative")
+
     def __str__(self):
         return (
             f"class: {self.__class__.__name__} | "
