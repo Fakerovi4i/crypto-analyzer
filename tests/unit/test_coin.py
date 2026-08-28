@@ -43,3 +43,18 @@ def test_coin_create_successful():
 def test_coin_validate_failed(make_coin_fixture, params):
     with pytest.raises(ValueError):
         make_coin_fixture(**params)
+
+
+def test_coin_zero_volume_and_market_cap_valid(make_coin_fixture):
+    """Проверка, что объем и капитализация могут быть нулевыми"""
+    coin = make_coin_fixture(total_volume=0, market_cap=0)
+
+    assert coin.total_volume == 0
+    assert coin.market_cap == 0
+
+
+def test_coin_negative_price_change_is_valid(make_coin_fixture):
+    """Проверка, что процент изменения цены может быть отрицательным"""
+    coin = make_coin_fixture(price_change_percentage_24h=-10.5)
+
+    assert coin.price_change_percentage_24h == -10.5
