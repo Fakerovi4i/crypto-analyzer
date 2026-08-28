@@ -220,7 +220,7 @@ class ProviderCMC(BaseProvider):
 
 class CoinCollection:
     def __init__(self, coins: list[Coin]):
-        if not coins:
+        if not coins or not isinstance(coins, list) or not all(isinstance(coin, Coin) for coin in coins):
             raise ValueError("CoinCollection must have at least one coin")
         self.coins = coins
 
