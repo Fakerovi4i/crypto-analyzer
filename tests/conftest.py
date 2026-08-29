@@ -21,15 +21,11 @@ def make_coin_fixture():
     return _make_coin
 
 @pytest.fixture
-def sample_coins(make_coin_fixture):
-    return [
+def coin_collection_fixture(make_coin_fixture):
+    sample = [
         make_coin_fixture(id="bitcoin", price_change_percentage_24h=5.2, total_volume=1000000.0, market_cap=500000000.0),
         make_coin_fixture(id="ethereum", price_change_percentage_24h=-3.1, total_volume=800000.0, market_cap=300000000.0),
         make_coin_fixture(id="dogecoin", price_change_percentage_24h=12.7, total_volume=50000.0, market_cap=10000000.0),
         make_coin_fixture(id="cardano", price_change_percentage_24h=-8.4, total_volume=30000.0, market_cap=8000000.0),
     ]
-
-
-@pytest.fixture
-def sample_collection(sample_coins):
-    return CoinCollection(sample_coins)
+    return CoinCollection(sample)
