@@ -1,4 +1,5 @@
 import pytest
+import requests_mock
 from main import Coin, CoinCollection
 
 
@@ -29,3 +30,10 @@ def coin_collection_fixture(make_coin_fixture):
         make_coin_fixture(id="cardano", price_change_percentage_24h=-8.4, total_volume=30000.0, market_cap=8000000.0),
     ]
     return CoinCollection(sample)
+
+
+@pytest.fixture
+def mock_requests_fixture():
+    """Фикстура для мокирования HTTP"""
+    with requests_mock.Mocker() as m:
+        yield m
