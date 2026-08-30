@@ -264,8 +264,6 @@ class BaseOutput(ABC):
         return [str(getattr(coin, key)) for key in self._column()]
 
 
-
-
 @register_output("console")
 class ConsoleOutput(BaseOutput):
     def output(self, collection: CoinCollection, qty: int = 3) -> None:
