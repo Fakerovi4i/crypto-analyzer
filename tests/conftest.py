@@ -37,3 +37,37 @@ def mock_requests_fixture():
     """Фикстура для мокирования HTTP"""
     with requests_mock.Mocker() as m:
         yield m
+
+
+@pytest.fixture
+def coingecko_response_fixture():
+    return [
+        {
+            "id": "bitcoin",
+            "name": "Bitcoin",
+            "symbol": "btc",
+            "price_change_percentage_24h": 5.2,
+            "total_volume": 1000000.0,
+            "market_cap": 500000000.0,
+        },
+    ]
+
+
+@pytest.fixture
+def cmc_response_fixture():
+    return {
+        "data": [
+            {
+                "id": "bitcoin",
+                "name": "Bitcoin",
+                "symbol": "btc",
+                "quote": [
+                    {
+                    "percent_change_24h": 5.2,
+                    "volume_24h": 1000000.0,
+                    "market_cap": 500000000.0,
+                    }
+                ],
+            },
+        ]
+    }
