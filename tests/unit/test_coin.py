@@ -66,3 +66,15 @@ def test_coin_dunder_lt(make_coin_fixture):
 
     assert coin1 > coin2
     assert coin2 < coin1
+
+
+def test_coin_dunder_str(make_coin_fixture):
+    coin: Coin = make_coin_fixture(id="fake_id", name="fake_name")
+
+    str_coin = str(coin)
+
+    assert "fake_id" in str_coin
+    assert "fake_name" in str_coin
+    assert coin.__class__.__name__ in str_coin
+
+
