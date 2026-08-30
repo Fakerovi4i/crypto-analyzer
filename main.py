@@ -148,7 +148,7 @@ class ProviderCoingecko(BaseProvider):
             self,
             connector: Connector,
             host: str = "https://api.coingecko.com",
-            path: str = "/api/v3/coins/markets/"
+            path: str = "/api/v3/coins/markets"
     ):
         super().__init__(connector, host, path)
 

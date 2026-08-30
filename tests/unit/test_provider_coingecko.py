@@ -28,7 +28,7 @@ def test_provider_coingecko_get_coins_raise_key_error(mock_requests_fixture):
     connector = Connector(console)
     mock_requests_fixture.get(
         "https://api.fake_host.com/api/fake_path",
-        json=[{"id": "bitcoin", "name": "Bitcoin"}]
+        json=[{"id": "bitcoin", "name": "Bitcoin"}] # нет quote — как будто Coingecko изменил формат
     )
 
     provider = ProviderCoingecko(connector, "https://api.fake_host.com", "/api/fake_path")
