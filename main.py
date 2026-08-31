@@ -40,7 +40,7 @@ def retry(max_attempts: int, delay: int):
 
 @dataclass
 class Coin:
-    id: str
+    id: str | int
     name: str
     symbol: str
     price_change_percentage_24h: float
@@ -48,26 +48,22 @@ class Coin:
     market_cap: float
 
     def __post_init__(self):
-        str_fields = {"id": self.id, "name": self.name, "symbol": self.symbol}
-        for name, value in str_fields.items():
-            if not isinstance(value, str):
-                raise ValueError(f"{name} must be a string")
-            if not value.strip():
-                raise ValueError(f"{name} must not be empty")
-
-        num_fields = {
-            "price_change_percentage_24h": self.price_change_percentage_24h,
-            "total_volume": self.total_volume,
-            "market_cap": self.market_cap,
-        }
-        for name, value in num_fields.items():
-            if not isinstance(value, (int, float)):
-                raise ValueError(f"{name} must be a number")
-
+        if not isinstance(self.name, str):
+            raise ValueError("name must be a string")
+        if not isinstance(self.symbol, str):
+            raise ValueError("symbol must be a string")
+        if not isinstance(self.total_volume, (int, float)):
+            raise ValueError("total_volume must be a number")
+        if not isinstance(self.market_cap, (int, float)):
+            raise ValueError("market_cap must be a number")
         if self.total_volume < 0:
             raise ValueError("total_volume must not be negative")
         if self.market_cap < 0:
             raise ValueError("market_cap must not be negative")
+        if self.price_change_percentage_24h is None:
+            self.price_change_percentage_24h = 0.0
+        elif not isinstance(self.price_change_percentage_24h, (int, float)):
+            raise ValueError("price_change_percentage_24h must be a number")
 
     def __str__(self):
         return (

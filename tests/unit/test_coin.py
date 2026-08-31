@@ -22,18 +22,16 @@ def test_coin_create_successful():
 
 @pytest.mark.parametrize(
     "params", [
-        ({"id": 123}),
-        ({"name": ""}),
-        ({"symbol": "  "}),
+        ({"name": 123}),
+        ({"symbol": ['']}),
         ({"price_change_percentage_24h": []}),
         ({"total_volume": -1}),
         ({"market_cap": -1}),
         ({"market_cap": ""}),
     ],
     ids=[
-        "id_not_string",
-        "name_empty",
-        "symbol_whitespace_only",
+        "name_not_str",
+        "symbol_not_str",
         "price_change_not_number",
         "total_volume_negative",
         "market_cap_negative",
