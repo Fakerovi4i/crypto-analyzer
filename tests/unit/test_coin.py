@@ -28,6 +28,7 @@ def test_coin_create_successful():
         ({"total_volume": -1}),
         ({"market_cap": -1}),
         ({"market_cap": ""}),
+        ({"total_volume": "aa"})
     ],
     ids=[
         "name_not_str",
@@ -36,6 +37,7 @@ def test_coin_create_successful():
         "total_volume_negative",
         "market_cap_negative",
         "market_cap_not_number",
+        "total_volume_not_number",
     ],
 )
 def test_coin_validate_failed(make_coin_fixture, params):

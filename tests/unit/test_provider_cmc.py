@@ -1,13 +1,12 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from main import ProviderCMC, Connector, Coin
 
 @patch("main.os.getenv")
-def test_provider_cmc_get_coins_valid_data(mock_getenv, cmc_response_fixture, mock_requests_fixture):
+def test_provider_cmc_get_coins_valid_data(mock_getenv, cmc_response_fixture, mock_requests_fixture, console_fixture):
     mock_getenv.return_value = "12345"
-    console = MagicMock()
-    connector = Connector(console, ProviderCMC.build_headers())
+    connector = Connector(console_fixture, ProviderCMC.build_headers())
     mock_requests_fixture.get("https://api.fake_host.com/api/fake_path", json=cmc_response_fixture)
     provider = ProviderCMC(connector, "https://api.fake_host.com", "/api/fake_path")
 
@@ -23,10 +22,9 @@ def test_provider_cmc_get_coins_valid_data(mock_getenv, cmc_response_fixture, mo
 
 
 @patch("main.os.getenv")
-def test_provider_cmc_get_coins_raises_key_error_on_missing_field(mock_getenv, mock_requests_fixture):
+def test_provider_cmc_get_coins_raises_key_error_on_missing_field(mock_getenv, mock_requests_fixture, console_fixture):
     mock_getenv.return_value = "12345"
-    console = MagicMock()
-    connector = Connector(console, ProviderCMC.build_headers())
+    connector = Connector(console_fixture, ProviderCMC.build_headers())
     mock_requests_fixture.get(
         "https://api.fake_host.com/api/fake_path",
         json={"data": [{"id": "bitcoin"}]},  # нет quote — как будто CMC изменил формат

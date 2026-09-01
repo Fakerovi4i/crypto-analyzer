@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 import requests_mock
 from main import Coin, CoinCollection
@@ -20,6 +22,12 @@ def make_coin_fixture():
         return Coin(**defaults)
 
     return _make_coin
+
+
+@pytest.fixture
+def console_fixture():
+    return MagicMock()
+
 
 @pytest.fixture
 def coin_collection_fixture(make_coin_fixture):

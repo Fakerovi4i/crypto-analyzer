@@ -2,12 +2,20 @@ import pytest
 from main import CoinCollection, Coin
 
 
-@pytest.mark.parametrize("param", [
+@pytest.mark.parametrize(
+    "param", [
     ({}),
     ("not a list"),
     ([1, 2, 3]),
     ([])
-])
+    ],
+    ids=[
+        "dict_not_a_list",
+        "str_not_a_list",
+        "list_with_non_coin_objects",
+        "empty_list"
+    ]
+)
 def test_coin_collection_not_coins_validation(param, make_coin_fixture):
     with pytest.raises(ValueError):
         CoinCollection(param)

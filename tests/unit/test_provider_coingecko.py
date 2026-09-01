@@ -1,12 +1,10 @@
 import pytest
 
 from main import ProviderCoingecko, Connector, Coin
-from unittest.mock import MagicMock, patch
 
 
-def test_provider_coingecko_get_coins_valid_data(coingecko_response_fixture, mock_requests_fixture):
-    console = MagicMock()
-    connector = Connector(console)
+def test_provider_coingecko_get_coins_valid_data(coingecko_response_fixture, mock_requests_fixture, console_fixture):
+    connector = Connector(console_fixture)
     mock_requests_fixture.get("https://api.fake_host.com/api/fake_path", json=coingecko_response_fixture)
     provider = ProviderCoingecko(connector, "https://api.fake_host.com", "/api/fake_path")
 
@@ -23,9 +21,8 @@ def test_provider_coingecko_get_coins_valid_data(coingecko_response_fixture, moc
 
 
 
-def test_provider_coingecko_get_coins_raise_key_error(mock_requests_fixture):
-    console = MagicMock()
-    connector = Connector(console)
+def test_provider_coingecko_get_coins_raise_key_error(mock_requests_fixture, console_fixture):
+    connector = Connector(console_fixture)
     mock_requests_fixture.get(
         "https://api.fake_host.com/api/fake_path",
         json=[{"id": "bitcoin", "name": "Bitcoin"}] # нет quote — как будто Coingecko изменил формат
