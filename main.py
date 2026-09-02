@@ -445,7 +445,7 @@ class SqliteAnalytics:
         finally:
             conn.close()
 
-    def coin_price_history(self, coin_id: str) -> list:
+    def coin_price_history(self, coin_id: str) -> list[tuple]:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -464,6 +464,27 @@ class SqliteAnalytics:
                 (coin_id,)
             )
             return cursor.fetchall()
+
+
+    def compare_snapshots(self, id_1: int, id_2: int):
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT
+                    a.coin_id,
+                    ROUND(a.price, 4) as price_before,
+                    ROUND(b.price, 4) as price_after,
+                    ROUND((a.price - b.price), 4) as price_difference
+                FROM coin_prices as a
+                JOIN coin_prices as b ON a.coin_id = b.coin_id
+                WHERE a.snapshot_id = ? AND b.snapshot_id = ?
+                """,
+                (id_1, id_2)
+            )
+            return cursor.fetchall()
+
+
 
 
 
@@ -509,13 +530,14 @@ def main(source: Source = Source.coingecko, output: OutputFormat = OutputFormat.
     output_source = output_class(console)
     output_source.output(collection, top)
 
-    report = create_report_data(collection, top)
-    storage_class = STORAGE_REGISTRY.get(settings.storage)
-    storage = storage_class()
-    storage.save(report)
+    # report = create_report_data(collection, top)
+    # storage_class = STORAGE_REGISTRY.get(settings.storage)
+    # storage = storage_class()
+    # storage.save(report)
 
     analys = SqliteAnalytics()
-    console.print(analys.coin_price_history("ethereum"))
+    # console.print(analys.coin_price_history("ethereum"))
+    console.print(analys.compare_snapshots(1, 2))
 
 if __name__ == "__main__":
     typer.run(main)
