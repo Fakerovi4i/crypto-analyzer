@@ -46,8 +46,11 @@ class Coin:
     price_change_percentage_24h: float
     total_volume: float
     market_cap: float
+    price: float
 
     def __post_init__(self):
+        if not isinstance(self.price, (int, float)):
+            raise ValueError("price must be a number")
         if not isinstance(self.name, str):
             raise ValueError("name must be a string")
         if not isinstance(self.symbol, str):
@@ -65,12 +68,14 @@ class Coin:
         elif not isinstance(self.price_change_percentage_24h, (int, float)):
             raise ValueError("price_change_percentage_24h must be a number")
 
+
     def __str__(self):
         return (
             f"class: {self.__class__.__name__} | "
             f"name: {self.name} | "
             f"id: {self.id} | "
-            f"price_change_24: {self.price_change_percentage_24h}"
+            f"price_change_24: {self.price_change_percentage_24h} | "
+            f"price: {self.price}"
         )
 
     def __lt__(self, other):
@@ -156,12 +161,13 @@ class ProviderCoingecko(BaseProvider):
         raw_data = self.fetch_raw(params)
         coins = [
             Coin(
-                item["id"],
-                item["name"],
-                item["symbol"],
-                item["price_change_percentage_24h"],
-                item["total_volume"],
-                item["market_cap"],
+                id=item["id"],
+                name=item["name"],
+                symbol=item["symbol"],
+                price_change_percentage_24h=item["price_change_percentage_24h"],
+                total_volume=item["total_volume"],
+                market_cap=item["market_cap"],
+                price=item["current_price"]
             )
             for item in raw_data
         ]
@@ -203,6 +209,7 @@ class ProviderCMC(BaseProvider):
                 price_change_percentage_24h=item["quote"][0]["percent_change_24h"],
                 total_volume=item["quote"][0]["volume_24h"],
                 market_cap=item["quote"][0]["market_cap"],
+                price=item["quote"][0]["price"]
             )
             for item in raw_data
         ]
