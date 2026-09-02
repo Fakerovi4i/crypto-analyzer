@@ -290,27 +290,6 @@ class ConsoleOutput(BaseOutput):
         self.console.print(table)
 
 
-@register_output("json")
-class JsonOutput(BaseOutput):
-    def __init__(self, console: Console, path: str = "crypto_report.json"):
-        super().__init__(console)
-        self.path = path
-
-    def output(self, collection: CoinCollection, qty: int = 3) -> None:
-        result_dict = {
-            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "total_coins_analyzed": len(collection.coins),
-            "total_market_cap_usd": collection.total_market_cap(),
-            "top_gainers": [asdict(coin) for coin in collection.top_gainers(qty)],
-            "top_losers": [asdict(coin) for coin in collection.top_losers(qty)],
-            "highest_volume": asdict(collection.top_volume())
-        }
-
-        with open(self.path, "w", encoding="utf-8") as file:
-            json.dump(result_dict, file, indent=4, ensure_ascii=False)
-
-        self.console.print(f"[green]Отчет сохранен в {self.path}[/]")
-
 @register_output("csv")
 class CsvOutput(BaseOutput):
     def __init__(self, console: Console, path: str = "crypto_report.csv"):
@@ -341,8 +320,38 @@ class Source(str, Enum):
 
 class OutputFormat(str, Enum):
     console = "console"
-    json = "json"
     csv = "csv"
+
+
+class BaseStorage(ABC):
+    @abstractmethod
+    def save(self, results: dict) -> None:
+        pass
+
+
+class JsonStorage(BaseStorage):
+    def __init__(self, path: str = "crypto_report.json"):
+        self.path = path
+
+    def save(self, results: dict) -> None:
+        data_to_write = results.copy()
+        del data_to_write["all_coins"]
+        with open(self.path, "w", encoding="utf-8") as file:
+            json.dump(data_to_write, file, indent=4, ensure_ascii=False)
+
+
+def create_report_data(collection: CoinCollection, qty) -> dict:
+    return {
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "total_coins_analyzed": len(collection.coins),
+        "total_market_cap_usd": collection.total_market_cap(),
+        "top_gainers": [asdict(coin) for coin in collection.top_gainers(qty)],
+        "top_losers": [asdict(coin) for coin in collection.top_losers(qty)],
+        "highest_volume": asdict(collection.top_volume()),
+
+        "all_coins": [asdict(coin) for coin in collection.coins], #для SqliteStorage
+    }
+
 
 def main(source: Source = Source.coingecko, output: OutputFormat = OutputFormat.console, top: int = 3):
     console = Console()

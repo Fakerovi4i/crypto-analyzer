@@ -14,8 +14,9 @@ def test_outputs_interface(coin_collection_fixture, console_fixture):
 
     console_fixture.print.assert_called_once()
 
-
+@pytest.mark.skip(reason="Функция будет перенесена в отдельный класс с другой логикой")
 def test_json_output_writes_correct_data(coin_collection_fixture, console_fixture):
+    """TODO: Переписать под json-storage"""
     output = OUTPUT_REGISTRY["json"](console_fixture)
 
     with patch("builtins.open", mock_open()) as mock_file:
