@@ -39,7 +39,7 @@ def test_csv_output_writes_correct_data(coin_collection_fixture, console_fixture
     written_text = "".join(call.args[0] for call in handle.write.call_args_list)
     rows = list(csv.reader(io.StringIO(written_text)))
 
-    assert rows[0] == ["id", "name", "symbol", "price_change_percentage_24h", "total_volume", "market_cap"]
+    assert rows[0] == ["id", "name", "symbol", "price_change_percentage_24h", "total_volume", "market_cap", "price"]
     assert len(rows) == 7  # header + 3 gainers + 3 losers
 
 
