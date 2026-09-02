@@ -4,6 +4,7 @@ from time import sleep
 import functools
 from dataclasses import dataclass, fields, asdict
 from abc import ABC, abstractmethod
+import sqlite3
 import json
 import os
 import csv
@@ -13,7 +14,7 @@ from rich.table import Table
 import requests
 import typer
 
-from settings import Settings
+from settings import Settings as settings
 
 
 
@@ -350,6 +351,82 @@ class JsonStorage(BaseStorage):
             json.dump(data_to_write, file, indent=4, ensure_ascii=False)
 
 
+@register_storage("sqlite")
+class SqliteStorage(BaseStorage):
+    def __init__(self, path: str = "crypto_report.db"):
+        self.path = path
+        self._init_schema_db()
+
+    def _init_schema_db(self):
+        with sqlite3.connect(self.path) as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS coin_prices (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    snapshot_id INTEGER NOT NULL,
+                    coin_id TEXT,
+                    name TEXT,
+                    symbol TEXT,
+                    price_change_percentage_24h REAL,
+                    total_volume REAL,
+                    market_cap REAL,
+                    price REAL,
+                    FOREIGN KEY (snapshot_id) REFERENCES snapshots(id)
+                )
+                """
+            )
+
+
+
+    def save(self, results: dict) -> None:
+        with sqlite3.connect(self.path) as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO snapshots (created_at) VALUES (?)
+                """,
+                (results.get("generated_at"),)
+
+            )
+            snapshot_id = cursor.lastrowid
+
+            for coin in results.get("all_coins"):
+                cursor.execute(
+                    """
+                    INSERT INTO coin_prices (
+                    snapshot_id, 
+                    coin_id, 
+                    name,
+                    symbol,
+                    price_change_percentage_24h, 
+                    total_volume, 
+                    market_cap,
+                    price
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        snapshot_id,
+                        coin.get("id"),
+                        coin.get("name"),
+                        coin.get("symbol"),
+                        coin.get("price_change_percentage_24h"),
+                        coin.get("total_volume"),
+                        coin.get("market_cap"),
+                        coin.get("price"),
+                    )
+                )
+
+
 def create_report_data(collection: CoinCollection, qty) -> dict:
     return {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -389,7 +466,7 @@ def main(source: Source = Source.coingecko, output: OutputFormat = OutputFormat.
     output_source.output(collection, top)
 
     report = create_report_data(collection, top)
-    storage_class = STORAGE_REGISTRY.get(Settings.storage)
+    storage_class = STORAGE_REGISTRY.get(settings.storage)
     storage = storage_class()
     storage.save(report)
 
