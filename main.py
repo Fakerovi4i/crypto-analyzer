@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from datetime import datetime
 from enum import Enum
 from time import sleep
@@ -8,6 +9,7 @@ import sqlite3
 import json
 import os
 import csv
+from typing import Any
 
 from rich.console import Console
 from rich.table import Table
@@ -387,44 +389,86 @@ class SqliteStorage(BaseStorage):
 
 
     def save(self, results: dict) -> None:
-        with sqlite3.connect(self.path) as conn:
-            conn.execute("PRAGMA foreign_keys = ON")
+        try:
+            with sqlite3.connect(self.path) as conn:
+                conn.execute("PRAGMA foreign_keys = ON")
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO snapshots (created_at) VALUES (?)
+                    """,
+                    (results.get("generated_at"),)
+
+                )
+                snapshot_id = cursor.lastrowid
+
+                for coin in results.get("all_coins"):
+                    cursor.execute(
+                        """
+                        INSERT INTO coin_prices (
+                        snapshot_id, 
+                        coin_id, 
+                        name,
+                        symbol,
+                        price_change_percentage_24h, 
+                        total_volume, 
+                        market_cap,
+                        price
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            snapshot_id,
+                            coin.get("id"),
+                            coin.get("name"),
+                            coin.get("symbol"),
+                            coin.get("price_change_percentage_24h"),
+                            coin.get("total_volume"),
+                            coin.get("market_cap"),
+                            coin.get("price"),
+                        )
+                    )
+
+        finally:
+            conn.close()
+
+
+class SqliteAnalytics:
+    def __init__(self, path: str = "crypto_report.db"):
+        self.path = path
+
+    @contextmanager
+    def _get_connection(self):
+        conn = sqlite3.connect(self.path)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def coin_price_history(self, coin_id: str) -> list:
+        with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO snapshots (created_at) VALUES (?)
+                SELECT
+                    snapshots.id, 
+                    snapshots.created_at, 
+                    coin_prices.coin_id, 
+                    coin_prices.symbol, 
+                    coin_prices.price
+                FROM snapshots
+                JOIN coin_prices ON snapshots.id = coin_prices.snapshot_id
+                WHERE coin_prices.coin_id = ?
+                ORDER BY snapshots.created_at
                 """,
-                (results.get("generated_at"),)
-
+                (coin_id,)
             )
-            snapshot_id = cursor.lastrowid
+            return cursor.fetchall()
 
-            for coin in results.get("all_coins"):
-                cursor.execute(
-                    """
-                    INSERT INTO coin_prices (
-                    snapshot_id, 
-                    coin_id, 
-                    name,
-                    symbol,
-                    price_change_percentage_24h, 
-                    total_volume, 
-                    market_cap,
-                    price
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        snapshot_id,
-                        coin.get("id"),
-                        coin.get("name"),
-                        coin.get("symbol"),
-                        coin.get("price_change_percentage_24h"),
-                        coin.get("total_volume"),
-                        coin.get("market_cap"),
-                        coin.get("price"),
-                    )
-                )
+
+
+
+
 
 
 def create_report_data(collection: CoinCollection, qty) -> dict:
@@ -470,6 +514,8 @@ def main(source: Source = Source.coingecko, output: OutputFormat = OutputFormat.
     storage = storage_class()
     storage.save(report)
 
+    analys = SqliteAnalytics()
+    console.print(analys.coin_price_history("ethereum"))
 
 if __name__ == "__main__":
     typer.run(main)
