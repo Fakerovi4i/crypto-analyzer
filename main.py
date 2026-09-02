@@ -11,10 +11,11 @@ import csv
 from rich.console import Console
 from rich.table import Table
 import requests
-import dotenv
 import typer
 
-dotenv.load_dotenv()
+from settings import Settings
+
+
 
 
 def retry(max_attempts: int, delay: int):
@@ -323,12 +324,21 @@ class OutputFormat(str, Enum):
     csv = "csv"
 
 
+STORAGE_REGISTRY = {}
+def register_storage(name: str):
+    def decorator(cls):
+        STORAGE_REGISTRY[name] = cls
+        return cls
+    return decorator
+
+
 class BaseStorage(ABC):
     @abstractmethod
     def save(self, results: dict) -> None:
         pass
 
 
+@register_storage("json")
 class JsonStorage(BaseStorage):
     def __init__(self, path: str = "crypto_report.json"):
         self.path = path
@@ -377,6 +387,11 @@ def main(source: Source = Source.coingecko, output: OutputFormat = OutputFormat.
     output_class = OUTPUT_REGISTRY.get(output)
     output_source = output_class(console)
     output_source.output(collection, top)
+
+    report = create_report_data(collection, top)
+    storage_class = STORAGE_REGISTRY.get(Settings.storage)
+    storage = storage_class()
+    storage.save(report)
 
 
 if __name__ == "__main__":
