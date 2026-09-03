@@ -340,6 +340,13 @@ class BaseStorage(ABC):
     def save(self, results: dict) -> None:
         pass
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+
 
 @register_storage("json")
 class JsonStorage(BaseStorage):
@@ -357,82 +364,90 @@ class JsonStorage(BaseStorage):
 class SqliteStorage(BaseStorage):
     def __init__(self, path: str = "crypto_report.db"):
         self.path = path
-        self._init_schema_db()
+        self._conn: sqlite3.Connection | None = None
 
     def _init_schema_db(self):
-        with sqlite3.connect(self.path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS snapshots (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    created_at TEXT NOT NULL,
-                    source TEXT NOT NULL
-                )
-                """
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                source TEXT NOT NULL
             )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS coin_prices (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    snapshot_id INTEGER NOT NULL,
-                    coin_id TEXT,
-                    name TEXT,
-                    symbol TEXT,
-                    price_change_percentage_24h REAL,
-                    total_volume REAL,
-                    market_cap REAL,
-                    price REAL,
-                    FOREIGN KEY (snapshot_id) REFERENCES snapshots(id)
-                )
-                """
+            """
+        )
+
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS coin_prices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snapshot_id INTEGER NOT NULL,
+                coin_id TEXT,
+                name TEXT,
+                symbol TEXT,
+                price_change_percentage_24h REAL,
+                total_volume REAL,
+                market_cap REAL,
+                price REAL,
+                FOREIGN KEY (snapshot_id) REFERENCES snapshots(id)
             )
-
-
+            """
+        )
+        self._conn.commit()
 
     def save(self, results: dict) -> None:
-        try:
-            with sqlite3.connect(self.path) as conn:
-                conn.execute("PRAGMA foreign_keys = ON")
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    INSERT INTO snapshots (created_at, source) VALUES (?, ?)
-                    """,
-                    (results.get("generated_at"), results.get("source"))
+        if self._conn is None:
+            raise RuntimeError("Storage is not opened. Use 'with SqliteStorage(...)'")
+        self._conn.execute("PRAGMA foreign_keys = ON")
 
+        cursor = self._conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO snapshots (created_at, source) VALUES (?, ?)
+            """,
+            (results.get("generated_at"), results.get("source"))
+
+        )
+        snapshot_id = cursor.lastrowid
+
+        for coin in results.get("all_coins"):
+            cursor.execute(
+                """
+                INSERT INTO coin_prices (
+                snapshot_id, 
+                coin_id, 
+                name,
+                symbol,
+                price_change_percentage_24h, 
+                total_volume, 
+                market_cap,
+                price
                 )
-                snapshot_id = cursor.lastrowid
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot_id,
+                    coin.get("id"),
+                    coin.get("name"),
+                    coin.get("symbol"),
+                    coin.get("price_change_percentage_24h"),
+                    coin.get("total_volume"),
+                    coin.get("market_cap"),
+                    coin.get("price"),
+                )
+            )
 
-                for coin in results.get("all_coins"):
-                    cursor.execute(
-                        """
-                        INSERT INTO coin_prices (
-                        snapshot_id, 
-                        coin_id, 
-                        name,
-                        symbol,
-                        price_change_percentage_24h, 
-                        total_volume, 
-                        market_cap,
-                        price
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            snapshot_id,
-                            coin.get("id"),
-                            coin.get("name"),
-                            coin.get("symbol"),
-                            coin.get("price_change_percentage_24h"),
-                            coin.get("total_volume"),
-                            coin.get("market_cap"),
-                            coin.get("price"),
-                        )
-                    )
+        self._conn.commit()
 
-        finally:
-            conn.close()
 
+    def __enter__(self):
+        self._conn = sqlite3.connect(self.path)
+        self._init_schema_db()
+        return self
+
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._conn.close()
 
 class SqliteAnalytics:
     def __init__(self, path: str = "crypto_report.db"):
@@ -530,6 +545,8 @@ class SqliteAnalytics:
 
 def create_report_data(collection: CoinCollection, qty: int, source: str) -> dict:
     return {
+        "source": source,
+
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "total_coins_analyzed": len(collection.coins),
         "total_market_cap_usd": collection.total_market_cap(),
@@ -538,7 +555,7 @@ def create_report_data(collection: CoinCollection, qty: int, source: str) -> dic
         "highest_volume": asdict(collection.top_volume()),
 
         "all_coins": [asdict(coin) for coin in collection.coins], #для SqliteStorage
-        "source": source
+
     }
 
 
@@ -594,8 +611,9 @@ def default(
 
     # Сохранение в json или sqlite (источник в .env)
     report = create_report_data(collection, top, source.value)
-    storage = STORAGE_REGISTRY.get(settings.storage)
-    storage().save(report)
+    storage_cls = STORAGE_REGISTRY.get(settings.storage)
+    with storage_cls() as storage:
+        storage.save(report)
 
 
 @app.command(name="list-snapshots")
