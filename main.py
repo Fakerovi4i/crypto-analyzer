@@ -40,12 +40,30 @@ def retry(max_attempts: int, delay: int):
 
 @dataclass
 class Coin:
-    id: str
+    id: str | int
     name: str
     symbol: str
     price_change_percentage_24h: float
     total_volume: float
     market_cap: float
+
+    def __post_init__(self):
+        if not isinstance(self.name, str):
+            raise ValueError("name must be a string")
+        if not isinstance(self.symbol, str):
+            raise ValueError("symbol must be a string")
+        if not isinstance(self.total_volume, (int, float)):
+            raise ValueError("total_volume must be a number")
+        if not isinstance(self.market_cap, (int, float)):
+            raise ValueError("market_cap must be a number")
+        if self.total_volume < 0:
+            raise ValueError("total_volume must not be negative")
+        if self.market_cap < 0:
+            raise ValueError("market_cap must not be negative")
+        if self.price_change_percentage_24h is None:
+            self.price_change_percentage_24h = 0.0
+        elif not isinstance(self.price_change_percentage_24h, (int, float)):
+            raise ValueError("price_change_percentage_24h must be a number")
 
     def __str__(self):
         return (
@@ -126,7 +144,7 @@ class ProviderCoingecko(BaseProvider):
             self,
             connector: Connector,
             host: str = "https://api.coingecko.com",
-            path: str = "/api/v3/coins/markets/"
+            path: str = "/api/v3/coins/markets"
     ):
         super().__init__(connector, host, path)
 
@@ -198,7 +216,7 @@ class ProviderCMC(BaseProvider):
 
 class CoinCollection:
     def __init__(self, coins: list[Coin]):
-        if not coins:
+        if not coins or not isinstance(coins, list) or not all(isinstance(coin, Coin) for coin in coins):
             raise ValueError("CoinCollection must have at least one coin")
         self.coins = coins
 
@@ -240,8 +258,6 @@ class BaseOutput(ABC):
 
     def _row(self, coin: Coin) -> list:
         return [str(getattr(coin, key)) for key in self._column()]
-
-
 
 
 @register_output("console")
