@@ -453,8 +453,6 @@ class SqliteAnalytics:
                 SELECT
                     snapshots.id, 
                     snapshots.created_at, 
-                    coin_prices.coin_id, 
-                    coin_prices.symbol, 
                     coin_prices.price
                 FROM snapshots
                 JOIN coin_prices ON snapshots.id = coin_prices.snapshot_id
@@ -477,12 +475,13 @@ class SqliteAnalytics:
                 """
             ).fetchall()
 
-    def compare_snapshots(self, id_1: int, id_2: int):
+    def compare_snapshots(self, id_1: int, id_2: int) -> list[tuple]:
         with self._get_connection() as conn:
             return conn.execute(
                 """
                 SELECT
                     a.coin_id,
+                    a.name,
                     ROUND(a.price, 4) as price_before,
                     ROUND(b.price, 4) as price_after,
                     ROUND((a.price - b.price), 4) as price_difference
@@ -543,6 +542,17 @@ def create_report_data(collection: CoinCollection, qty: int, source: str) -> dic
     }
 
 
+def print_table(title: str, columns: list[str], rows: list[tuple]):
+    table = Table(title=title, title_style="yellow bold")
+
+    for column in columns:
+        table.add_column(column, header_style="green bold", style="yellow", max_width=12, no_wrap=True, overflow="ellipsis")
+
+    for row in rows:
+        table.add_row(*(str(value) for value in row))
+
+    console.print(table)
+
 
 
 console = Console()
@@ -591,32 +601,45 @@ def default(
 @app.command(name="list-snapshots")
 def list_snapshot():
     """Показать все снимки"""
-    console.print(SqliteAnalytics().list_snapshots())
+    rows = SqliteAnalytics().list_snapshots()
+    print_table(title="Снимки", columns=["id", "created_at", "source"], rows=rows)
 
 
 @app.command(name="compare-snapshots")
 def compare_snapshots(id_1: int, id_2: int):
     """Сравнить два снимка по ID и показать изменение цены каждой монеты."""
-    console.print(SqliteAnalytics().compare_snapshots(id_1, id_2))
+    rows = SqliteAnalytics().compare_snapshots(id_1, id_2)
+    print_table(title="Сравнение снимков", columns=["coin_id", "name", "price_before", "price_after", "price_difference"], rows=rows)
 
 
 @app.command(name="coin-history")
 def coin_price_history(coin_id: str):
     """Показать историю цены монеты по всем снимкам."""
-    console.print(SqliteAnalytics().coin_price_history(coin_id))
-
+    rows = SqliteAnalytics().coin_price_history(coin_id)
+    print_table(title=f"История цены: '{coin_id}'", columns=["snap_id", "created_at", "price"], rows=rows)
 
 @app.command(name="top-5")
 def top_5_last_snapshot():
     """Показать по 5 лидеров роста и падения цены из последнегго снимка"""
-    console.print(SqliteAnalytics().top_5_gainers_losers())
+    gainers_losers = SqliteAnalytics().top_5_gainers_losers()
+    table = Table(title="Топ роста/падения цены последнего снимка", title_style="yellow bold")
+    columns = ["coin_id", "price", "price_change_24h"]
+    for column in columns:
+        table.add_column(column, header_style="green bold", style="yellow")
+
+    for g in gainers_losers["top_gainers"]:
+        table.add_row(*(str(value) for value in g), style="green")
+
+    for l in gainers_losers["top_losers"]:
+        table.add_row(*(str(value) for value in l), style="red")
+
+    console.print(table)
+
+
 
 
 
 
 if __name__ == "__main__":
-    # with sqlite3.connect("crypto_report.db") as conn:
-    #     print(conn.execute("SELECT DISTINCT coin_id FROM coin_prices WHERE snapshot_id = 1 LIMIT 5").fetchall())
-    #     print(conn.execute("SELECT DISTINCT coin_id FROM coin_prices WHERE snapshot_id = 12 LIMIT 5").fetchall())
     app()
 
