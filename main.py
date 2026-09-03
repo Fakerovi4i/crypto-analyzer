@@ -449,17 +449,22 @@ class SqliteStorage(BaseStorage):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._conn.close()
 
+
 class SqliteAnalytics:
-    def __init__(self, path: str = "crypto_report.db"):
+    def __init__(self, conn: sqlite3.Connection | None = None, path: str = "crypto_report.db"):
         self.path = path
+        self._external_conn = conn
 
     @contextmanager
     def _get_connection(self):
-        conn = sqlite3.connect(self.path)
-        try:
-            yield conn
-        finally:
-            conn.close()
+        if self._external_conn is not None:
+            yield self._external_conn
+        else:
+            conn = sqlite3.connect(self.path)
+            try:
+                yield conn
+            finally:
+                conn.close()
 
     def coin_price_history(self, coin_id: str) -> list[tuple]:
         with self._get_connection() as conn:
@@ -508,7 +513,7 @@ class SqliteAnalytics:
             ).fetchall()
 
     def top_5_gainers_losers(self, qty: int = 5) -> dict:
-        last_snapshot = self.list_snapshots()[-1]
+        last_snapshot = self.list_snapshots()[:-1]
         if not last_snapshot:
             return {"top_gainers": [], "top_losers": []}
 
@@ -652,8 +657,6 @@ def top_5_last_snapshot():
         table.add_row(*(str(value) for value in l), style="red")
 
     console.print(table)
-
-
 
 
 

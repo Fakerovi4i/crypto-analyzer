@@ -43,7 +43,8 @@ def test_sqlite_save_snapshots(storage_fixture, report_fixture):
     ).fetchall()
     snapshot_id, created_at, source = data[0]
 
-    assert isinstance(snapshot_id, int) > 0
+    assert isinstance(snapshot_id, int)
+    assert snapshot_id > 0
     assert created_at == "2026-09-03 17:43:00"
     assert source == "coin market"
 
@@ -66,6 +67,18 @@ def test_sqlite_save_coin_prices(report_fixture, storage_fixture):
     assert row[0] == first_coin["name"]
     assert row[1] == first_coin["symbol"]
     assert row[2] == first_coin["price"]
+
+
+def test_sqlite_save_accumulates_snapshots(storage_fixture, report_fixture):
+    """Повторный save() создаёт новый снимок, а не перезаписывает"""
+    cursor = storage_fixture._conn.cursor()
+
+    storage_fixture.save(report_fixture)
+    storage_fixture.save(report_fixture)
+
+    cursor.execute("SELECT COUNT(*) FROM snapshots")
+    count = cursor.fetchone()[0]
+    assert count == 2
 
 
 

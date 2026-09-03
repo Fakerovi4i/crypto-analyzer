@@ -60,8 +60,27 @@ def report_fixture(coin_collection_fixture):
 
 @pytest.fixture
 def storage_fixture():
+    """Фикстура для базы данных в памяти"""
     with SqliteStorage(path=":memory:") as storage:
         yield storage
+
+
+@pytest.fixture
+def storage_with_data_fixture(storage_fixture, make_coin_fixture):
+    """Два снимка с разной ценой одной и той же монеты — для теста сравнения"""
+    first_report = {
+        "generated_at": "2026-09-03 10:00:00",
+        "source": "coingecko",
+        "all_coins": [asdict(make_coin_fixture(id="bitcoin", price=1000.0))],
+    }
+    second_report = {
+        "generated_at": "2026-09-03 11:00:00",
+        "source": "coingecko",
+        "all_coins": [asdict(make_coin_fixture(id="bitcoin", price=1200.0))],
+    }
+    storage_fixture.save(first_report)
+    storage_fixture.save(second_report)
+    return storage_fixture
 
 
 @pytest.fixture
