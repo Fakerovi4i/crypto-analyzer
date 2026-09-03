@@ -365,7 +365,8 @@ class SqliteStorage(BaseStorage):
                 """
                 CREATE TABLE IF NOT EXISTS snapshots (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    source TEXT NOT NULL
                 )
                 """
             )
@@ -395,9 +396,9 @@ class SqliteStorage(BaseStorage):
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    INSERT INTO snapshots (created_at) VALUES (?)
+                    INSERT INTO snapshots (created_at, source) VALUES (?, ?)
                     """,
-                    (results.get("generated_at"),)
+                    (results.get("generated_at"), results.get("source"))
 
                 )
                 snapshot_id = cursor.lastrowid
@@ -447,8 +448,7 @@ class SqliteAnalytics:
 
     def coin_price_history(self, coin_id: str) -> list[tuple]:
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
+            return conn.execute(
                 """
                 SELECT
                     snapshots.id, 
@@ -462,14 +462,24 @@ class SqliteAnalytics:
                 ORDER BY snapshots.created_at
                 """,
                 (coin_id,)
-            )
-            return cursor.fetchall()
+            ).fetchall()
 
+    def list_snapshots(self):
+        with self._get_connection() as conn:
+            return conn.execute(
+                """
+                SELECT
+                    snapshots.id, 
+                    snapshots.created_at,
+                    snapshots.source
+                FROM snapshots
+                ORDER BY snapshots.created_at
+                """
+            ).fetchall()
 
     def compare_snapshots(self, id_1: int, id_2: int):
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
+            return conn.execute(
                 """
                 SELECT
                     a.coin_id,
@@ -481,18 +491,45 @@ class SqliteAnalytics:
                 WHERE a.snapshot_id = ? AND b.snapshot_id = ?
                 """,
                 (id_1, id_2)
-            )
-            return cursor.fetchall()
+            ).fetchall()
+
+    def top_5_gainers_losers(self, qty: int = 5) -> dict:
+        last_snapshot = self.list_snapshots()[-1]
+        if not last_snapshot:
+            return {"top_gainers": [], "top_losers": []}
+
+        last_snapshot_id = last_snapshot[0]
+
+        with self._get_connection() as conn:
+            gainers = conn.execute(
+                """
+                SELECT coin_id, price, price_change_percentage_24h
+                FROM coin_prices
+                WHERE snapshot_id = ?
+                ORDER BY price_change_percentage_24h DESC
+                LIMIT ?
+                """,
+                (last_snapshot_id, qty)
+            ).fetchall()
+
+            losers = conn.execute(
+                """
+                SELECT coin_id, price, price_change_percentage_24h
+                FROM coin_prices
+                WHERE snapshot_id = ?
+                ORDER BY price_change_percentage_24h ASC
+                LIMIT ?
+                """,
+                (last_snapshot_id, qty)
+            ).fetchall()
+
+        return {
+            "top_gainers": gainers,
+            "top_losers": losers,
+        }
 
 
-
-
-
-
-
-
-
-def create_report_data(collection: CoinCollection, qty) -> dict:
+def create_report_data(collection: CoinCollection, qty: int, source: str) -> dict:
     return {
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "total_coins_analyzed": len(collection.coins),
@@ -502,11 +539,26 @@ def create_report_data(collection: CoinCollection, qty) -> dict:
         "highest_volume": asdict(collection.top_volume()),
 
         "all_coins": [asdict(coin) for coin in collection.coins], #для SqliteStorage
+        "source": source
     }
 
 
-def main(source: Source = Source.coingecko, output: OutputFormat = OutputFormat.console, top: int = 3):
-    console = Console()
+
+
+console = Console()
+app = typer.Typer()
+
+@app.callback(invoke_without_command=True)
+def default(
+        ctx: typer.Context,
+        source: Source = Source.coingecko,
+        output: OutputFormat = OutputFormat.console,
+        top: int = 3):
+    """Собрать данные с провайдера, показать и сохранить снимок (запускается по умолчанию)."""
+    if ctx.invoked_subcommand is not None:
+        # вызвана конкретная подкоманда (list-snapshots/compare-snapshots) — пропускаем
+        return
+
 
     provider_class = PROVIDER_REGISTRY.get(source)
     if provider_class is None:
@@ -530,14 +582,41 @@ def main(source: Source = Source.coingecko, output: OutputFormat = OutputFormat.
     output_source = output_class(console)
     output_source.output(collection, top)
 
-    # report = create_report_data(collection, top)
-    # storage_class = STORAGE_REGISTRY.get(settings.storage)
-    # storage = storage_class()
-    # storage.save(report)
+    # Сохранение в json или sqlite (источник в .env)
+    report = create_report_data(collection, top, source.value)
+    storage = STORAGE_REGISTRY.get(settings.storage)
+    storage().save(report)
 
-    analys = SqliteAnalytics()
-    # console.print(analys.coin_price_history("ethereum"))
-    console.print(analys.compare_snapshots(1, 2))
+
+@app.command(name="list-snapshots")
+def list_snapshot():
+    """Показать все снимки"""
+    console.print(SqliteAnalytics().list_snapshots())
+
+
+@app.command(name="compare-snapshots")
+def compare_snapshots(id_1: int, id_2: int):
+    """Сравнить два снимка по ID и показать изменение цены каждой монеты."""
+    console.print(SqliteAnalytics().compare_snapshots(id_1, id_2))
+
+
+@app.command(name="coin-history")
+def coin_price_history(coin_id: str):
+    """Показать историю цены монеты по всем снимкам."""
+    console.print(SqliteAnalytics().coin_price_history(coin_id))
+
+
+@app.command(name="top-5")
+def top_5_last_snapshot():
+    """Показать по 5 лидеров роста и падения цены из последнегго снимка"""
+    console.print(SqliteAnalytics().top_5_gainers_losers())
+
+
+
 
 if __name__ == "__main__":
-    typer.run(main)
+    # with sqlite3.connect("crypto_report.db") as conn:
+    #     print(conn.execute("SELECT DISTINCT coin_id FROM coin_prices WHERE snapshot_id = 1 LIMIT 5").fetchall())
+    #     print(conn.execute("SELECT DISTINCT coin_id FROM coin_prices WHERE snapshot_id = 12 LIMIT 5").fetchall())
+    app()
+
