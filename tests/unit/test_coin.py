@@ -10,6 +10,7 @@ def test_coin_create_successful():
         price_change_percentage_24h=5.2,
         total_volume=1000000.0,
         market_cap=50000000.0,
+        price=1000000.0,
     )
 
     assert coin.id == "bitcoin"
@@ -18,6 +19,7 @@ def test_coin_create_successful():
     assert coin.price_change_percentage_24h == 5.2
     assert coin.total_volume == 1000000.0
     assert coin.market_cap == 50000000.0
+    assert coin.price == 1000000.0
 
 
 @pytest.mark.parametrize(
@@ -28,7 +30,8 @@ def test_coin_create_successful():
         ({"total_volume": -1}),
         ({"market_cap": -1}),
         ({"market_cap": ""}),
-        ({"total_volume": "aa"})
+        ({"total_volume": "aa"}),
+        ({"price": "aa"}),
     ],
     ids=[
         "name_not_str",
@@ -38,6 +41,7 @@ def test_coin_create_successful():
         "market_cap_negative",
         "market_cap_not_number",
         "total_volume_not_number",
+        "price_not_number",
     ],
 )
 def test_coin_validate_failed(make_coin_fixture, params):
