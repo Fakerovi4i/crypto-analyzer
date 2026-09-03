@@ -14,22 +14,6 @@ def test_outputs_interface(coin_collection_fixture, console_fixture):
 
     console_fixture.print.assert_called_once()
 
-@pytest.mark.skip(reason="Функция будет перенесена в отдельный класс с другой логикой")
-def test_json_output_writes_correct_data(coin_collection_fixture, console_fixture):
-    """TODO: Переписать под json-storage"""
-    output = OUTPUT_REGISTRY["json"](console_fixture)
-
-    with patch("builtins.open", mock_open()) as mock_file:
-        output.output(coin_collection_fixture, qty=3)
-
-    handle = mock_file()
-    written_text = "".join(call.args[0] for call in handle.write.call_args_list)
-    data = json.loads(written_text)
-
-    assert data["total_coins_analyzed"] == 4
-    assert len(data["top_gainers"]) == 3
-
-
 def test_csv_output_writes_correct_data(coin_collection_fixture, console_fixture):
     output = OUTPUT_REGISTRY["csv"](console_fixture)
 
