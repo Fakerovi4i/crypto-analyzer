@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from unittest.mock import MagicMock
 
 import pytest
@@ -29,6 +30,10 @@ def make_coin_fixture():
 def console_fixture():
     return MagicMock()
 
+@pytest.fixture
+def storage_fixture():
+    return MagicMock()
+
 
 @pytest.fixture
 def coin_collection_fixture(make_coin_fixture):
@@ -39,6 +44,25 @@ def coin_collection_fixture(make_coin_fixture):
         make_coin_fixture(id="cardano", price_change_percentage_24h=-8.4, total_volume=30000.0, market_cap=8000000.0, price=1000000.0),
     ]
     return CoinCollection(sample)
+
+
+@pytest.fixture
+def report_fixture(coin_collection_fixture):
+    qty = 3
+    return {
+        "source": "coin market",
+        "generated_at": "2026-09-03 17:43:00",
+        "total_coins_analyzed": len(coin_collection_fixture.coins),
+        "total_market_cap_usd": coin_collection_fixture.total_market_cap(),
+        "top_gainers": [asdict(coin) for coin in coin_collection_fixture.top_gainers(qty)],
+        "top_losers": [asdict(coin) for coin in coin_collection_fixture.top_losers(qty)],
+        "highest_volume": asdict(coin_collection_fixture.top_volume()),
+
+        "all_coins": [asdict(coin) for coin in coin_collection_fixture.coins],
+
+    }
+    qty = 3
+
 
 
 @pytest.fixture
