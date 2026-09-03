@@ -3,8 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import requests_mock
-from main import Coin, CoinCollection
-
+from main import Coin, CoinCollection, SqliteStorage
 
 
 @pytest.fixture
@@ -28,10 +27,6 @@ def make_coin_fixture():
 
 @pytest.fixture
 def console_fixture():
-    return MagicMock()
-
-@pytest.fixture
-def storage_fixture():
     return MagicMock()
 
 
@@ -61,8 +56,12 @@ def report_fixture(coin_collection_fixture):
         "all_coins": [asdict(coin) for coin in coin_collection_fixture.coins],
 
     }
-    qty = 3
 
+
+@pytest.fixture
+def storage_fixture():
+    with SqliteStorage(path=":memory:") as storage:
+        yield storage
 
 
 @pytest.fixture
