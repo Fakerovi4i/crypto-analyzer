@@ -64,6 +64,13 @@ def test_coin_negative_price_change_is_valid(make_coin_fixture):
     assert coin.price_change_percentage_24h == -10.5
 
 
+def test_coin_none_price_change_is_valid(make_coin_fixture):
+    """Проверка, что процент изменения цены может быть отрицательным"""
+    coin = make_coin_fixture(price_change_percentage_24h=None)
+
+    assert coin.price_change_percentage_24h == 0.0
+
+
 def test_coin_dunder_lt(make_coin_fixture):
     coin1 = make_coin_fixture(price_change_percentage_24h=10.5)
     coin2 = make_coin_fixture(price_change_percentage_24h=5.2)

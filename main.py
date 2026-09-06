@@ -53,11 +53,13 @@ class Coin:
     price: float
 
     def __post_init__(self):
+        if not isinstance(self.id, (str, int)) or not str(self.id).strip():
+            raise ValueError("id must be a string or integer")
         if not isinstance(self.price, (int, float)):
             raise ValueError("price must be a number")
-        if not isinstance(self.name, str):
+        if not isinstance(self.name, str) or not self.name.strip():
             raise ValueError("name must be a string")
-        if not isinstance(self.symbol, str):
+        if not isinstance(self.symbol, str) or not self.symbol.strip():
             raise ValueError("symbol must be a string")
         if not isinstance(self.total_volume, (int, float)):
             raise ValueError("total_volume must be a number")
