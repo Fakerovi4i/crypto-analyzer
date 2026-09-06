@@ -360,40 +360,41 @@ class JsonStorage(BaseStorage):
             json.dump(data_to_write, file, indent=4, ensure_ascii=False)
 
 
+def init_schema(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            source TEXT NOT NULL
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS coin_prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id INTEGER NOT NULL,
+            coin_id TEXT,
+            name TEXT,
+            symbol TEXT,
+            price_change_percentage_24h REAL,
+            total_volume REAL,
+            market_cap REAL,
+            price REAL,
+            FOREIGN KEY (snapshot_id) REFERENCES snapshots(id)
+        )
+        """
+    )
+    conn.commit()
+
+
 @register_storage("sqlite")
 class SqliteStorage(BaseStorage):
     def __init__(self, path: str = "crypto_report.db"):
         self.path = path
         self._conn: sqlite3.Connection | None = None
-
-    def _init_schema_db(self):
-        self._conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS snapshots (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TEXT NOT NULL,
-                source TEXT NOT NULL
-            )
-            """
-        )
-
-        self._conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS coin_prices (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                snapshot_id INTEGER NOT NULL,
-                coin_id TEXT,
-                name TEXT,
-                symbol TEXT,
-                price_change_percentage_24h REAL,
-                total_volume REAL,
-                market_cap REAL,
-                price REAL,
-                FOREIGN KEY (snapshot_id) REFERENCES snapshots(id)
-            )
-            """
-        )
-        self._conn.commit()
 
     def save(self, results: dict) -> None:
         if self._conn is None:
@@ -439,12 +440,10 @@ class SqliteStorage(BaseStorage):
 
         self._conn.commit()
 
-
     def __enter__(self):
         self._conn = sqlite3.connect(self.path)
-        self._init_schema_db()
+        init_schema(self._conn)
         return self
-
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._conn.close()
@@ -461,6 +460,8 @@ class SqliteAnalytics:
             yield self._external_conn
         else:
             conn = sqlite3.connect(self.path)
+            init_schema(conn)
+
             try:
                 yield conn
             finally:
@@ -513,11 +514,11 @@ class SqliteAnalytics:
             ).fetchall()
 
     def top_5_gainers_losers(self, qty: int = 5) -> dict:
-        last_snapshot = self.list_snapshots()[:-1]
-        if not last_snapshot:
+        list_snapshots = self.list_snapshots()
+        if not list_snapshots:
             return {"top_gainers": [], "top_losers": []}
 
-        last_snapshot_id = last_snapshot[0]
+        last_snapshot_id = list_snapshots[-1][0]
 
         with self._get_connection() as conn:
             gainers = conn.execute(
@@ -564,14 +565,14 @@ def create_report_data(collection: CoinCollection, qty: int, source: str) -> dic
     }
 
 
-def print_table(title: str, columns: list[str], rows: list[tuple]):
+def print_table(title: str, columns: list[str], rows: list[tuple], row_style: str | None = None):
     table = Table(title=title, title_style="yellow bold")
 
     for column in columns:
         table.add_column(column, header_style="green bold", style="yellow", max_width=12, no_wrap=True, overflow="ellipsis")
 
     for row in rows:
-        table.add_row(*(str(value) for value in row))
+        table.add_row(*(str(value) for value in row), style=row_style)
 
     console.print(table)
 
@@ -644,19 +645,14 @@ def coin_price_history(coin_id: str):
 @app.command(name="top-5")
 def top_5_last_snapshot():
     """Показать по 5 лидеров роста и падения цены из последнегго снимка"""
-    gainers_losers = SqliteAnalytics().top_5_gainers_losers()
-    table = Table(title="Топ роста/падения цены последнего снимка", title_style="yellow bold")
+    rows = SqliteAnalytics().top_5_gainers_losers()
     columns = ["coin_id", "price", "price_change_24h"]
-    for column in columns:
-        table.add_column(column, header_style="green bold", style="yellow")
 
-    for g in gainers_losers["top_gainers"]:
-        table.add_row(*(str(value) for value in g), style="green")
+    rows_g = rows.get("top_gainers")
+    rows_l = rows.get("top_losers")
 
-    for l in gainers_losers["top_losers"]:
-        table.add_row(*(str(value) for value in l), style="red")
-
-    console.print(table)
+    print_table(title="Топ роста цены последнего снимка", columns=columns, rows=rows_g, row_style="green")
+    print_table(title="Топ падения цены последнего снимка", columns=columns, rows=rows_l, row_style="red")
 
 
 
