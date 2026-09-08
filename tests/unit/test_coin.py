@@ -10,6 +10,7 @@ def test_coin_create_successful():
         price_change_percentage_24h=5.2,
         total_volume=1000000.0,
         market_cap=50000000.0,
+        price=1000000.0,
     )
 
     assert coin.id == "bitcoin"
@@ -18,26 +19,33 @@ def test_coin_create_successful():
     assert coin.price_change_percentage_24h == 5.2
     assert coin.total_volume == 1000000.0
     assert coin.market_cap == 50000000.0
+    assert coin.price == 1000000.0
 
 
 @pytest.mark.parametrize(
     "params", [
+        ({"id": " "}),
         ({"name": 123}),
+        ({"name": " "}),
         ({"symbol": ['']}),
         ({"price_change_percentage_24h": []}),
         ({"total_volume": -1}),
         ({"market_cap": -1}),
         ({"market_cap": ""}),
-        ({"total_volume": "aa"})
+        ({"total_volume": "aa"}),
+        ({"price": "aa"}),
     ],
     ids=[
+        "id_empty_str",
         "name_not_str",
+        "name_empty_str",
         "symbol_not_str",
         "price_change_not_number",
         "total_volume_negative",
         "market_cap_negative",
         "market_cap_not_number",
         "total_volume_not_number",
+        "price_not_number",
     ],
 )
 def test_coin_validate_failed(make_coin_fixture, params):
@@ -58,6 +66,13 @@ def test_coin_negative_price_change_is_valid(make_coin_fixture):
     coin = make_coin_fixture(price_change_percentage_24h=-10.5)
 
     assert coin.price_change_percentage_24h == -10.5
+
+
+def test_coin_none_price_change_is_valid(make_coin_fixture):
+    """Проверка, что процент изменения цены может быть отрицательным"""
+    coin = make_coin_fixture(price_change_percentage_24h=None)
+
+    assert coin.price_change_percentage_24h == 0.0
 
 
 def test_coin_dunder_lt(make_coin_fixture):

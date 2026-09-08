@@ -1,9 +1,9 @@
+from dataclasses import asdict
 from unittest.mock import MagicMock
 
 import pytest
 import requests_mock
-from main import Coin, CoinCollection
-
+from main import Coin, CoinCollection, SqliteStorage
 
 
 @pytest.fixture
@@ -17,6 +17,7 @@ def make_coin_fixture():
             price_change_percentage_24h=1.0,
             total_volume=1000.0,
             market_cap=500000.0,
+            price=1000000.0,
         )
         defaults.update(kwargs)
         return Coin(**defaults)
@@ -32,12 +33,54 @@ def console_fixture():
 @pytest.fixture
 def coin_collection_fixture(make_coin_fixture):
     sample = [
-        make_coin_fixture(id="bitcoin", price_change_percentage_24h=5.2, total_volume=1000000.0, market_cap=500000000.0),
-        make_coin_fixture(id="ethereum", price_change_percentage_24h=-3.1, total_volume=800000.0, market_cap=300000000.0),
-        make_coin_fixture(id="dogecoin", price_change_percentage_24h=12.7, total_volume=50000.0, market_cap=10000000.0),
-        make_coin_fixture(id="cardano", price_change_percentage_24h=-8.4, total_volume=30000.0, market_cap=8000000.0),
+        make_coin_fixture(id="bitcoin", price_change_percentage_24h=5.2, total_volume=1000000.0, market_cap=500000000.0, price=1000000.0),
+        make_coin_fixture(id="ethereum", price_change_percentage_24h=-3.1, total_volume=800000.0, market_cap=300000000.0, price=1000000.0),
+        make_coin_fixture(id="dogecoin", price_change_percentage_24h=12.7, total_volume=50000.0, market_cap=10000000.0, price=1000000.0),
+        make_coin_fixture(id="cardano", price_change_percentage_24h=-8.4, total_volume=30000.0, market_cap=8000000.0, price=1000000.0),
     ]
     return CoinCollection(sample)
+
+
+@pytest.fixture
+def report_fixture(coin_collection_fixture):
+    qty = 3
+    return {
+        "source": "coin market",
+        "generated_at": "2026-09-03 17:43:00",
+        "total_coins_analyzed": len(coin_collection_fixture.coins),
+        "total_market_cap_usd": coin_collection_fixture.total_market_cap(),
+        "top_gainers": [asdict(coin) for coin in coin_collection_fixture.top_gainers(qty)],
+        "top_losers": [asdict(coin) for coin in coin_collection_fixture.top_losers(qty)],
+        "highest_volume": asdict(coin_collection_fixture.top_volume()),
+
+        "all_coins": [asdict(coin) for coin in coin_collection_fixture.coins],
+
+    }
+
+
+@pytest.fixture
+def storage_fixture():
+    """Фикстура для базы данных в памяти"""
+    with SqliteStorage(path=":memory:") as storage:
+        yield storage
+
+
+@pytest.fixture
+def storage_with_data_fixture(storage_fixture, make_coin_fixture):
+    """Два снимка с разной ценой одной и той же монеты — для теста сравнения"""
+    first_report = {
+        "generated_at": "2026-09-03 10:00:00",
+        "source": "coingecko",
+        "all_coins": [asdict(make_coin_fixture(id="bitcoin", price=1000.0))],
+    }
+    second_report = {
+        "generated_at": "2026-09-03 11:00:00",
+        "source": "coingecko",
+        "all_coins": [asdict(make_coin_fixture(id="bitcoin", price=1200.0))],
+    }
+    storage_fixture.save(first_report)
+    storage_fixture.save(second_report)
+    return storage_fixture
 
 
 @pytest.fixture
@@ -57,6 +100,7 @@ def coingecko_response_fixture():
             "price_change_percentage_24h": 5.2,
             "total_volume": 1000000.0,
             "market_cap": 500000000.0,
+            "current_price": 1000000.0,
         },
     ]
 
@@ -74,6 +118,7 @@ def cmc_response_fixture():
                     "percent_change_24h": 5.2,
                     "volume_24h": 1000000.0,
                     "market_cap": 500000000.0,
+                    "price": 1000000.0,
                     }
                 ],
             },
