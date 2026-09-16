@@ -33,7 +33,7 @@ def test_compare_correct(storage_with_data_fixture):
     assert coin_id == "bitcoin"
     assert price_before == 1000
     assert price_after == 1200
-    assert price_difference == -200
+    assert price_difference == 200
 
 
 def test_top_5_gainers_losers_not_have_snapshots(storage_fixture):
