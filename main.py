@@ -494,7 +494,7 @@ class SqliteAnalytics:
                     snapshots.created_at,
                     snapshots.source
                 FROM snapshots
-                ORDER BY snapshots.created_at
+                ORDER BY snapshots.id DESC
                 """
             ).fetchall()
 
@@ -516,13 +516,21 @@ class SqliteAnalytics:
             ).fetchall()
 
     def top_5_gainers_losers(self, qty: int = 5) -> dict:
-        list_snapshots = self.list_snapshots()
-        if not list_snapshots:
-            return {"top_gainers": [], "top_losers": []}
-
-        last_snapshot_id = list_snapshots[-1][0]
-
         with self._get_connection() as conn:
+            last_snapshot_id, = conn.execute(
+                """
+                SELECT
+                    snapshots.id
+                    FROM snapshots
+                    ORDER BY snapshots.id DESC
+                    LIMIT 1
+                """
+            ).fetchone()
+            print('=============')
+            print(last_snapshot_id)
+            if last_snapshot_id is None:
+                return {"top_gainers": [], "top_losers": []}
+
             gainers = conn.execute(
                 """
                 SELECT coin_id, price, price_change_percentage_24h
