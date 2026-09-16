@@ -33,7 +33,7 @@ def test_compare_correct(storage_with_data_fixture):
     assert coin_id == "bitcoin"
     assert price_before == 1000
     assert price_after == 1200
-    assert price_difference == -200
+    assert price_difference == 200
 
 
 def test_top_5_gainers_losers_not_have_snapshots(storage_fixture):
@@ -43,6 +43,25 @@ def test_top_5_gainers_losers_not_have_snapshots(storage_fixture):
     analytic_dict = analytics.top_5_gainers_losers()
 
     assert analytic_dict == {"top_gainers": [], "top_losers": []}
+
+def test_top_5_gainers_losers_get_last_snapshot(storage_with_data_fixture):
+    """Проверяет, что в выдачу попали цены из последнего снимка"""
+    analytics = SqliteAnalytics(conn=storage_with_data_fixture._conn)
+    coins = analytics.top_5_gainers_losers(qty=2)
+
+    assert coins["top_gainers"]
+
+    bitcoin = coins["top_gainers"][0]
+    coin_id, price, price_change = bitcoin
+
+    assert coin_id == "bitcoin"
+    assert price == 1200.0
+    assert price_change == 1
+
+
+
+
+
 
 
 

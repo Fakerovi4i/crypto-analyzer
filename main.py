@@ -494,7 +494,7 @@ class SqliteAnalytics:
                     snapshots.created_at,
                     snapshots.source
                 FROM snapshots
-                ORDER BY snapshots.created_at
+                ORDER BY snapshots.id DESC
                 """
             ).fetchall()
 
@@ -507,22 +507,32 @@ class SqliteAnalytics:
                     a.name,
                     ROUND(a.price, 4) as price_before,
                     ROUND(b.price, 4) as price_after,
-                    ROUND((a.price - b.price), 4) as price_difference
+                    ROUND((b.price - a.price), 4) as price_difference
                 FROM coin_prices as a
-                JOIN coin_prices as b ON a.coin_id = b.coin_id
-                WHERE a.snapshot_id = ? AND b.snapshot_id = ?
+                LEFT JOIN coin_prices as b
+                ON a.coin_id = b.coin_id and b.snapshot_id = ?
+                WHERE a.snapshot_id = ?
                 """,
-                (id_1, id_2)
+                (id_2, id_1)
             ).fetchall()
 
     def top_5_gainers_losers(self, qty: int = 5) -> dict:
-        list_snapshots = self.list_snapshots()
-        if not list_snapshots:
-            return {"top_gainers": [], "top_losers": []}
-
-        last_snapshot_id = list_snapshots[-1][0]
-
         with self._get_connection() as conn:
+            last_snapshot = conn.execute(
+                """
+                SELECT
+                    snapshots.id
+                    FROM snapshots
+                    ORDER BY snapshots.id DESC
+                    LIMIT 1
+                """
+            ).fetchone()
+
+            if last_snapshot is None:
+                return {"top_gainers": [], "top_losers": []}
+
+            last_snapshot_id = last_snapshot[0]
+
             gainers = conn.execute(
                 """
                 SELECT coin_id, price, price_change_percentage_24h

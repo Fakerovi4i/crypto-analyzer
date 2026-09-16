@@ -14,6 +14,9 @@ __pycache__/
 
 # Database files
 db-data/
+crypto_report.db
+crypto_report.json
+
 
 # IDE (PyCharm)
 .idea/
@@ -21,3 +24,7 @@ db-data/
 # OS files
 .DS_Store
 Thumbs.db
+
+
+.coverage
+htmlcov/
