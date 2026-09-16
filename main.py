@@ -507,7 +507,7 @@ class SqliteAnalytics:
                     a.name,
                     ROUND(a.price, 4) as price_before,
                     ROUND(b.price, 4) as price_after,
-                    ROUND((a.price - b.price), 4) as price_difference
+                    ROUND((b.price - a.price), 4) as price_difference
                 FROM coin_prices as a
                 JOIN coin_prices as b ON a.coin_id = b.coin_id
                 WHERE a.snapshot_id = ? AND b.snapshot_id = ?
