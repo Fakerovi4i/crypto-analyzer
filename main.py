@@ -517,7 +517,7 @@ class SqliteAnalytics:
 
     def top_5_gainers_losers(self, qty: int = 5) -> dict:
         with self._get_connection() as conn:
-            last_snapshot_id, = conn.execute(
+            last_snapshot = conn.execute(
                 """
                 SELECT
                     snapshots.id
@@ -526,10 +526,11 @@ class SqliteAnalytics:
                     LIMIT 1
                 """
             ).fetchone()
-            print('=============')
-            print(last_snapshot_id)
-            if last_snapshot_id is None:
+
+            if last_snapshot is None:
                 return {"top_gainers": [], "top_losers": []}
+
+            last_snapshot_id = last_snapshot[0]
 
             gainers = conn.execute(
                 """
