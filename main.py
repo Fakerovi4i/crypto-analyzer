@@ -509,10 +509,11 @@ class SqliteAnalytics:
                     ROUND(b.price, 4) as price_after,
                     ROUND((b.price - a.price), 4) as price_difference
                 FROM coin_prices as a
-                JOIN coin_prices as b ON a.coin_id = b.coin_id
-                WHERE a.snapshot_id = ? AND b.snapshot_id = ?
+                LEFT JOIN coin_prices as b
+                ON a.coin_id = b.coin_id and b.snapshot_id = ?
+                WHERE a.snapshot_id = ?
                 """,
-                (id_1, id_2)
+                (id_2, id_1)
             ).fetchall()
 
     def top_5_gainers_losers(self, qty: int = 5) -> dict:
